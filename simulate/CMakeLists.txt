@@ -13,6 +13,9 @@ list(APPEND CMAKE_PREFIX_PATH "/opt/unitree_robotics/lib/cmake")
 find_package(unitree_sdk2 REQUIRED)
 find_package(Boost REQUIRED COMPONENTS program_options)
 
+find_package(rclcpp QUIET)
+find_package(sensor_msgs QUIET)
+
 
 include_directories(
   mujoco/include
@@ -42,5 +45,14 @@ link_libraries(
 )
 
 add_executable(unitree_mujoco ${SIM_SRC} src/main.cc)
+
+if(rclcpp_FOUND AND sensor_msgs_FOUND)
+  target_sources(unitree_mujoco PRIVATE src/mid360_simulator.cc)
+  target_compile_definitions(unitree_mujoco PRIVATE UNITREE_MJLAB_HAS_ROS2)
+  target_link_libraries(unitree_mujoco rclcpp::rclcpp ${sensor_msgs_TARGETS})
+  message(STATUS "MID-360 ROS 2 simulation enabled")
+else()
+  message(WARNING "rclcpp or sensor_msgs not found; MID-360 ROS 2 simulation disabled")
+endif()
 
 add_executable(jstest src/joystick/jstest.cc src/joystick/joystick.cc)

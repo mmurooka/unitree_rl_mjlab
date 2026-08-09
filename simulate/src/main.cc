@@ -34,6 +34,9 @@
 #include "array_safety.h"
 #include "unitree_sdk2_bridge.h"
 #include "param.h"
+#ifdef UNITREE_MJLAB_HAS_ROS2
+#include "mid360_simulator.h"
+#endif
 
 #define MUJOCO_PLUGIN_DIR "mujoco_plugin"
 #define NUM_MOTOR_IDL_GO 20
@@ -99,6 +102,36 @@ namespace
   // model and data
   mjModel *m = nullptr;
   mjData *d = nullptr;
+#ifdef UNITREE_MJLAB_HAS_ROS2
+  std::unique_ptr<Mid360Simulator> mid360;
+#endif
+
+  void InitializeMid360()
+  {
+#ifdef UNITREE_MJLAB_HAS_ROS2
+    mid360.reset();
+    if (m && param::config.enable_mid360)
+    {
+      mid360 = std::make_unique<Mid360Simulator>(m, param::config.mid360_scan_pattern.c_str());
+    }
+#else
+    if (param::config.enable_mid360)
+    {
+      std::cerr << "MID-360 requested, but this executable was built without ROS 2 support\n";
+    }
+#endif
+  }
+
+  void StepSimulation()
+  {
+    mj_step(m, d);
+#ifdef UNITREE_MJLAB_HAS_ROS2
+    if (mid360)
+    {
+      mid360->advance(m, d);
+    }
+#endif
+  }
 
   // control noise variables
   mjtNum *ctrlnoise = nullptr;
@@ -356,6 +389,7 @@ namespace
           m = mnew;
           d = dnew;
           mj_forward(m, d);
+          InitializeMid360();
 
           // allocate ctrlnoise
           free(ctrlnoise);
@@ -386,6 +420,7 @@ namespace
           m = mnew;
           d = dnew;
           mj_forward(m, d);
+          InitializeMid360();
 
           // allocate ctrlnoise
           free(ctrlnoise);
@@ -462,7 +497,7 @@ namespace
               sim.speed_changed = false;
 
               // run single step, let next iteration deal with timing
-              mj_step(m, d);
+              StepSimulation();
               stepped = true;
             }
 
@@ -503,7 +538,7 @@ namespace
                 }
 
                 // call mj_step
-                mj_step(m, d);
+                StepSimulation();
                 stepped = true;
 
                 // break if reset
@@ -549,6 +584,7 @@ void PhysicsThread(mj::Simulate *sim, const char *filename)
     {
       sim->Load(m, d, filename);
       mj_forward(m, d);
+      InitializeMid360();
 
       // allocate ctrlnoise
       free(ctrlnoise);
@@ -564,6 +600,9 @@ void PhysicsThread(mj::Simulate *sim, const char *filename)
   PhysicsLoop(*sim);
 
   // delete everything we allocated
+#ifdef UNITREE_MJLAB_HAS_ROS2
+  mid360.reset();
+#endif
   free(ctrlnoise);
   mj_deleteData(d);
   mj_deleteModel(m);
@@ -676,6 +715,9 @@ int main(int argc, char **argv)
   param::helper(argc, argv);
   if(param::config.robot_scene.is_relative()) {
     param::config.robot_scene = proj_dir.parent_path() / param::config.robot_scene;
+  }
+  if(param::config.mid360_scan_pattern.is_relative()) {
+    param::config.mid360_scan_pattern = proj_dir / param::config.mid360_scan_pattern;
   }
 
   // simulate object encapsulates the UI

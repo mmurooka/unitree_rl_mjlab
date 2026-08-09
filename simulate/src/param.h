@@ -26,6 +26,18 @@ inline struct SimulationConfig
     int enable_elastic_band;
     int band_attached_link = 0;
 
+    bool enable_mid360 = false;
+    std::filesystem::path mid360_scan_pattern;
+    std::string mid360_frame_id = "livox_frame";
+    std::string mid360_lidar_topic = "/livox/lidar";
+    std::string mid360_imu_topic = "/livox/imu";
+    double mid360_point_rate = 200000.0;
+    double mid360_publish_frequency = 10.0;
+    double mid360_imu_frequency = 200.0;
+    double mid360_min_range = 0.1;
+    double mid360_max_range = 40.0;
+    int mid360_downsample = 1;
+
     void load_from_yaml(const std::string &filename)
     {
         auto cfg = YAML::LoadFile(filename);
@@ -41,6 +53,21 @@ inline struct SimulationConfig
             joystick_bits = cfg["joystick_bits"].as<int>();
             print_scene_information = cfg["print_scene_information"].as<int>();
             enable_elastic_band = cfg["enable_elastic_band"].as<int>();
+
+            if (const auto lidar = cfg["mid360"])
+            {
+                enable_mid360 = lidar["enabled"].as<bool>(false);
+                mid360_scan_pattern = lidar["scan_pattern"].as<std::string>("");
+                mid360_frame_id = lidar["frame_id"].as<std::string>(mid360_frame_id);
+                mid360_lidar_topic = lidar["lidar_topic"].as<std::string>(mid360_lidar_topic);
+                mid360_imu_topic = lidar["imu_topic"].as<std::string>(mid360_imu_topic);
+                mid360_point_rate = lidar["point_rate"].as<double>(mid360_point_rate);
+                mid360_publish_frequency = lidar["publish_frequency"].as<double>(mid360_publish_frequency);
+                mid360_imu_frequency = lidar["imu_frequency"].as<double>(mid360_imu_frequency);
+                mid360_min_range = lidar["min_range"].as<double>(mid360_min_range);
+                mid360_max_range = lidar["max_range"].as<double>(mid360_max_range);
+                mid360_downsample = lidar["downsample"].as<int>(mid360_downsample);
+            }
         }
         catch(const std::exception& e)
         {
