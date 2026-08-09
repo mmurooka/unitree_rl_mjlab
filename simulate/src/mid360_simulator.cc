@@ -45,7 +45,7 @@ struct LivoxPoint
   float intensity;
   std::uint8_t tag;
   std::uint8_t line;
-  double timestamp_ns;
+  double timestamp;
 };
 
 struct Cloud
@@ -171,6 +171,7 @@ public:
     {
       ray_budget_ = 0.0;
       active_cloud_.points.clear();
+      active_cloud_.stamp = data->time;
       next_cloud_time_ = data->time + cloud_period_;
       next_imu_time_ = data->time;
     }
@@ -179,6 +180,7 @@ public:
     last_sim_time_ = data->time;
     if (next_cloud_time_ < 0.0)
     {
+      active_cloud_.stamp = data->time;
       next_cloud_time_ = data->time + cloud_period_;
       next_imu_time_ = data->time;
     }
@@ -195,7 +197,7 @@ public:
     }
     if (data->time >= next_cloud_time_)
     {
-      active_cloud_.stamp = next_cloud_time_;
+      const double next_cloud_start = next_cloud_time_;
       QueueCloud(std::move(active_cloud_));
       active_cloud_ = Cloud{};
       active_cloud_.points.reserve(static_cast<std::size_t>(points_per_second_ * cloud_period_ * 1.1));
@@ -203,6 +205,7 @@ public:
       {
         next_cloud_time_ += cloud_period_;
       } while (data->time >= next_cloud_time_);
+      active_cloud_.stamp = next_cloud_start;
     }
   }
 
@@ -249,7 +252,7 @@ private:
       active_cloud_.points.push_back({
           static_cast<float>(ray.x * distance), static_cast<float>(ray.y * distance),
           static_cast<float>(ray.z * distance), 100.0F, 0, ray.line,
-          (first_stamp + i / points_per_second_) * 1.0e9,
+          first_stamp + i / points_per_second_,
       });
     }
   }
@@ -321,7 +324,8 @@ private:
       std::memcpy(dst + 12, &point.intensity, sizeof(float));
       dst[16] = point.tag;
       dst[17] = point.line;
-      std::memcpy(dst + 18, &point.timestamp_ns, sizeof(double));
+      const double relative_timestamp = point.timestamp - cloud.stamp;
+      std::memcpy(dst + 18, &relative_timestamp, sizeof(double));
     }
     return message;
   }
@@ -356,13 +360,13 @@ private:
           has_imu = true;
         }
       }
-      if (has_cloud)
-      {
-        cloud_publisher_->publish(MakeCloudMessage(cloud));
-      }
       if (has_imu)
       {
         imu_publisher_->publish(imu);
+      }
+      if (has_cloud)
+      {
+        cloud_publisher_->publish(MakeCloudMessage(cloud));
       }
       rclcpp::spin_some(node_);
     }

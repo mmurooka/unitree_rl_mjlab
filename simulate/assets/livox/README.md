@@ -39,4 +39,5 @@ component.
 
 The current intensity is a fixed synthetic value and `tag` is zero. Rays are
 cast incrementally at 200,000 points/s, so each cloud contains motion
-distortion and each point has its simulated acquisition timestamp in ns.
+distortion. Each point's timestamp is its acquisition time in seconds relative
+to the point-cloud header timestamp.
