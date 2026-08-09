@@ -658,7 +658,13 @@ __attribute__((used, visibility("default"))) extern "C" void _mj_rosettaError(co
 #endif
 
 // user keyboard callback
+GLFWkeyfun mujoco_key_cb = nullptr;
+
 void user_key_cb(GLFWwindow* window, int key, int scancode, int act, int mods) {
+  if (mujoco_key_cb) {
+    mujoco_key_cb(window, key, scancode, act, mods);
+  }
+
   if (act==GLFW_PRESS)
   {
     if(param::config.enable_elastic_band == 1) {
@@ -730,7 +736,8 @@ int main(int argc, char **argv)
   // start physics thread
   std::thread physicsthreadhandle(&PhysicsThread, sim.get(), param::config.robot_scene.c_str());
   // start simulation UI loop (blocking call)
-  glfwSetKeyCallback(static_cast<mj::GlfwAdapter*>(sim->platform_ui.get())->window_,user_key_cb);
+  mujoco_key_cb = glfwSetKeyCallback(
+      static_cast<mj::GlfwAdapter*>(sim->platform_ui.get())->window_, user_key_cb);
   sim->RenderLoop();
   physicsthreadhandle.join();
 
