@@ -1,0 +1,24 @@
+# Created by Open3D 
+# object name: wall_1_11_collision_mesh_1
+# number of vertices: 8
+# number of triangles: 12
+v 7.95 0 10
+v 8 0 10
+v 7.95 3 10
+v 8 3 10
+v 7.95 0 9.995
+v 8 0 9.995
+v 7.95 3 9.995
+v 8 3 9.995
+f 3 2 1
+f 3 4 2
+f 5 6 7
+f 6 8 7
+f 6 5 1
+f 2 6 1
+f 8 6 2
+f 4 8 2
+f 7 8 4
+f 3 7 4
+f 5 7 3
+f 1 5 3
