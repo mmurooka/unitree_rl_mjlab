@@ -34,4 +34,4 @@ mid360:
   imu_frequency: 200
   min_range: 0.1
   max_range: 40.0
-  downsample: 1
+  downsample: 2
