@@ -67,6 +67,8 @@ int main(int argc, char **argv)
           {"RB", 5},
           {"SELECT", 6},
           {"START", 7},
+          {"F1", 9},  // Left stick click
+          {"F2", 10}, // Right stick click
       };
 
   while (true)
@@ -81,8 +83,8 @@ int main(int argc, char **argv)
     unitree_key.components.select = joystick.button_[ButtonId["SELECT"]];
     unitree_key.components.R2 = (joystick.axis_[AxisId["RT"]] > 0);
     unitree_key.components.L2 = (joystick.axis_[AxisId["LT"]] > 0);
-    unitree_key.components.F1 = 0;
-    unitree_key.components.F2 = 0;
+    unitree_key.components.F1 = joystick.button_[ButtonId["F1"]];
+    unitree_key.components.F2 = joystick.button_[ButtonId["F2"]];
     unitree_key.components.A = joystick.button_[ButtonId["A"]];
     unitree_key.components.B = joystick.button_[ButtonId["B"]];
     unitree_key.components.X = joystick.button_[ButtonId["X"]];

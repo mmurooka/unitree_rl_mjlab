@@ -31,6 +31,8 @@ public:
         B(js_->button_[1]); 
         X(js_->button_[2]);
         Y(js_->button_[3]);
+        F1(js_->button_[9]);
+        F2(js_->button_[10]);
         up(js_->axis_[7] < 0);
         down(js_->axis_[7] > 0);
         left(js_->axis_[6] < 0);
