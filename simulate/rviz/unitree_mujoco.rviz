@@ -1,13 +1,14 @@
 Panels:
   - Class: rviz_common/Displays
-    Help Height: 138
+    Help Height: 0
     Name: Displays
     Property Tree Widget:
       Expanded:
         - /Global Options1
-        - /MID-3601
+        - /D4351/Topic1
+        - /D4352/Topic1
       Splitter Ratio: 0.5
-    Tree Height: 1868
+    Tree Height: 1433
   - Class: rviz_common/Views
     Expanded:
       - /Current View1
@@ -37,8 +38,8 @@ Visualization Manager:
     - Alpha: 1
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
-        Max Value: 2.8679468631744385
-        Min Value: 0.11733826994895935
+        Max Value: 1.2809003591537476
+        Min Value: -0.9084943532943726
         Value: true
       Axis: Z
       Channel Name: intensity
@@ -68,10 +69,58 @@ Visualization Manager:
       Use Fixed Frame: true
       Use rainbow: true
       Value: true
+    - Class: rviz_default_plugins/Image
+      Enabled: true
+      Max Value: 1
+      Median window: 5
+      Min Value: 0
+      Name: D435
+      Normalize Range: true
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Best Effort
+        Value: /camera/camera/color/image_raw
+      Value: true
+    - Alpha: 1
+      Autocompute Intensity Bounds: true
+      Autocompute Value Bounds:
+        Max Value: 10
+        Min Value: -10
+        Value: true
+      Axis: Z
+      Channel Name: intensity
+      Class: rviz_default_plugins/PointCloud2
+      Color: 255; 255; 255
+      Color Transformer: RGB8
+      Decay Time: 0
+      Enabled: true
+      Invert Rainbow: false
+      Max Color: 255; 255; 255
+      Max Intensity: 4096
+      Min Color: 0; 0; 0
+      Min Intensity: 0
+      Name: D435
+      Position Transformer: XYZ
+      Selectable: true
+      Size (Pixels): 3
+      Size (m): 0.019999999552965164
+      Style: Flat Squares
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        Filter size: 10
+        History Policy: Keep Last
+        Reliability Policy: Best Effort
+        Value: /camera/camera/depth/color/points
+      Use Fixed Frame: true
+      Use rainbow: true
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 30; 30; 30
-    Fixed Frame: livox_frame
+    Fixed Frame: torso_link
     Frame Rate: 30
   Name: root
   Tools:
@@ -89,33 +138,35 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 15.78529167175293
+      Distance: 8.05195140838623
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: 0.17320409417152405
-        Y: 0.10686363279819489
-        Z: 1.6414021253585815
+        X: 0.797498881816864
+        Y: 0.6976584792137146
+        Z: -0.9297757148742676
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.7150001525878906
+      Pitch: 0.814796507358551
       Target Frame: livox_frame
       Value: Orbit (rviz)
-      Yaw: 0.630000114440918
+      Yaw: 3.3550093173980713
     Saved: ~
 Window Geometry:
-  Displays:
+  D435:
     collapsed: false
+  Displays:
+    collapsed: true
   Height: 2272
-  Hide Left Dock: false
+  Hide Left Dock: true
   Hide Right Dock: true
-  QMainWindow State: 000000ff00000000fd0000000200000000000001f700000844fc0200000001fb000000100044006900730070006c006100790073010000006e000008440000018200ffffff000000010000015f00000844fc0200000001fb0000000a00560069006500770073000000006e000008440000013200ffffff000005370000084400000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
+  QMainWindow State: 000000ff00000000fd00000003000000000000032700000607fc0200000001fb000000100044006900730070006c00610079007300000002ab000006070000018200ffffff000000010000015f00000844fc0200000001fb0000000a00560069006500770073000000006e000008440000013200ffffff000000020000073a00000231fc0100000001fb00000008004400340033003501000000000000073a0000008600ffffff0000073a0000060700000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
   Views:
     collapsed: true
   Width: 1850

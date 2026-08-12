@@ -368,7 +368,6 @@ private:
       {
         cloud_publisher_->publish(MakeCloudMessage(cloud));
       }
-      rclcpp::spin_some(node_);
     }
   }
 

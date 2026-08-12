@@ -35,6 +35,7 @@
 #include "unitree_sdk2_bridge.h"
 #include "param.h"
 #ifdef UNITREE_MJLAB_HAS_ROS2
+#include "d435_simulator.h"
 #include "mid360_simulator.h"
 #endif
 
@@ -104,15 +105,23 @@ namespace
   mjData *d = nullptr;
 #ifdef UNITREE_MJLAB_HAS_ROS2
   std::unique_ptr<Mid360Simulator> mid360;
+  std::unique_ptr<D435Simulator> d435;
+  std::mutex ros_sensor_mutex;
 #endif
 
-  void InitializeMid360()
+  void InitializeRosSensors()
   {
 #ifdef UNITREE_MJLAB_HAS_ROS2
+    std::lock_guard<std::mutex> lock(ros_sensor_mutex);
+    d435.reset();
     mid360.reset();
     if (m && param::config.enable_mid360)
     {
       mid360 = std::make_unique<Mid360Simulator>(m, param::config.mid360_scan_pattern.c_str());
+    }
+    if (m && param::config.enable_d435)
+    {
+      d435 = std::make_unique<D435Simulator>(m);
     }
 #else
     if (param::config.enable_mid360)
@@ -389,7 +398,7 @@ namespace
           m = mnew;
           d = dnew;
           mj_forward(m, d);
-          InitializeMid360();
+          InitializeRosSensors();
 
           // allocate ctrlnoise
           free(ctrlnoise);
@@ -420,7 +429,7 @@ namespace
           m = mnew;
           d = dnew;
           mj_forward(m, d);
-          InitializeMid360();
+          InitializeRosSensors();
 
           // allocate ctrlnoise
           free(ctrlnoise);
@@ -584,7 +593,7 @@ void PhysicsThread(mj::Simulate *sim, const char *filename)
     {
       sim->Load(m, d, filename);
       mj_forward(m, d);
-      InitializeMid360();
+      InitializeRosSensors();
 
       // allocate ctrlnoise
       free(ctrlnoise);
@@ -601,7 +610,11 @@ void PhysicsThread(mj::Simulate *sim, const char *filename)
 
   // delete everything we allocated
 #ifdef UNITREE_MJLAB_HAS_ROS2
-  mid360.reset();
+  {
+    std::lock_guard<std::mutex> lock(ros_sensor_mutex);
+    d435.reset();
+    mid360.reset();
+  }
 #endif
   free(ctrlnoise);
   mj_deleteData(d);
@@ -730,6 +743,15 @@ int main(int argc, char **argv)
   auto sim = std::make_unique<mj::Simulate>(
     std::make_unique<mj::GlfwAdapter>(),
     &cam, &opt, &pert, /* is_passive = */ false);
+#ifdef UNITREE_MJLAB_HAS_ROS2
+  sim->render_callback = [](const mjModel *model, mjData *data, mjrContext *context) {
+    std::lock_guard<std::mutex> lock(ros_sensor_mutex);
+    if (d435 && model && data)
+    {
+      d435->render(model, data, context);
+    }
+  };
+#endif
 
   std::thread unitree_thread(UnitreeSdk2BridgeThread, nullptr);
 

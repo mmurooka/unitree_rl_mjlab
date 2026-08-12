@@ -38,6 +38,16 @@ inline struct SimulationConfig
     double mid360_max_range = 40.0;
     int mid360_downsample = 1;
 
+    bool enable_d435 = false;
+    int d435_width = 640;
+    int d435_height = 480;
+    double d435_frequency = 30.0;
+    double d435_min_range = 0.1;
+    double d435_max_range = 10.0;
+    bool d435_publish_pointcloud = true;
+    int d435_pointcloud_downsample = 1;
+    std::string d435_topic_root = "/camera/camera";
+
     void load_from_yaml(const std::string &filename)
     {
         auto cfg = YAML::LoadFile(filename);
@@ -67,6 +77,18 @@ inline struct SimulationConfig
                 mid360_min_range = lidar["min_range"].as<double>(mid360_min_range);
                 mid360_max_range = lidar["max_range"].as<double>(mid360_max_range);
                 mid360_downsample = lidar["downsample"].as<int>(mid360_downsample);
+            }
+            if (const auto camera = cfg["d435"])
+            {
+                enable_d435 = camera["enabled"].as<bool>(false);
+                d435_width = camera["width"].as<int>(d435_width);
+                d435_height = camera["height"].as<int>(d435_height);
+                d435_frequency = camera["frequency"].as<double>(d435_frequency);
+                d435_min_range = camera["min_range"].as<double>(d435_min_range);
+                d435_max_range = camera["max_range"].as<double>(d435_max_range);
+                d435_publish_pointcloud = camera["publish_pointcloud"].as<bool>(d435_publish_pointcloud);
+                d435_pointcloud_downsample = camera["pointcloud_downsample"].as<int>(d435_pointcloud_downsample);
+                d435_topic_root = camera["topic_root"].as<std::string>(d435_topic_root);
             }
         }
         catch(const std::exception& e)
