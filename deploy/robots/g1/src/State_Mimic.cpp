@@ -76,6 +76,20 @@ REGISTER_OBSERVATION(motion_anchor_ori_b)
     return std::vector<float>(data.data(), data.data() + data.size());
 }
 
+REGISTER_OBSERVATION(motion_phase)
+{
+    const auto loader = State_Mimic::motion;
+    if (loader->num_frames <= 0) {
+        throw std::runtime_error(
+            "Cannot compute motion_phase for an empty motion."
+        );
+    }
+    return std::vector<float>{
+        static_cast<float>(loader->frame) /
+        static_cast<float>(loader->num_frames)
+    };
+}
+
 }
 }
 

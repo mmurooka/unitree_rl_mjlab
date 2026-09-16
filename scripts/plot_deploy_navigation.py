@@ -473,6 +473,58 @@ def main() -> None:
 
     joint_status = joint_figure.suptitle(f"Waiting for {tail.path}")
 
+    arm_tracking_figure = None
+    arm_tracking_status = None
+    arm_tracking_axes = None
+    arm_tracking_lines = {}
+    if command_joint_indices:
+        arm_tracking_figure, arm_tracking_axes = plt.subplots(
+            7,
+            2,
+            figsize=(14, 16),
+            sharex=True,
+            constrained_layout=True,
+        )
+        arm_tracking_figure.supylabel("Joint position [rad]")
+        first_visible_axis = True
+        selected_arm_joints = set(command_joint_indices)
+        for arm_offset, joint_index in enumerate(G1_ARM_JOINT_INDICES):
+            row = arm_offset % 7
+            column = arm_offset // 7
+            axis = arm_tracking_axes[row, column]
+            if joint_index not in selected_arm_joints:
+                axis.set_visible(False)
+                continue
+            axis.grid(True)
+            axis.set_xlabel("time [s]")
+            axis.set_title(G1_JOINT_NAMES[joint_index])
+            target_line = axis.plot(
+                [],
+                [],
+                color="tab:blue",
+                linestyle="--",
+                linewidth=1.5,
+                label="target",
+            )[0]
+            measured_line = axis.plot(
+                [],
+                [],
+                color="tab:orange",
+                linewidth=1.2,
+                label="measured",
+            )[0]
+            arm_tracking_lines[joint_index] = (
+                axis,
+                target_line,
+                measured_line,
+            )
+            if first_visible_axis:
+                axis.legend(loc="best", fontsize=8)
+                first_visible_axis = False
+        arm_tracking_status = arm_tracking_figure.suptitle(
+            f"Arm target vs measured | Waiting for {tail.path}"
+        )
+
     def update(_frame: int):
         tail.poll()
         target_path.poll()
@@ -480,6 +532,10 @@ def main() -> None:
             message = tail.error or f"Waiting for samples in {tail.path}"
             pose_status.set_text(message)
             joint_status.set_text(message)
+            if arm_tracking_status is not None:
+                arm_tracking_status.set_text(
+                    f"Arm target vs measured | {message}"
+                )
             return ()
 
         data = {
@@ -620,6 +676,59 @@ def main() -> None:
                 data[action_field] if action_field else [],
             )
 
+        latest_arm_errors = []
+        for joint_index, (
+            axis,
+            target_line,
+            measured_line,
+        ) in arm_tracking_lines.items():
+            command_field = command_fields.get(joint_index)
+            encoder_field = encoder_fields.get(joint_index)
+            if command_field and encoder_field:
+                target_values = data[command_field]
+                measured_values = data[encoder_field]
+                target_line.set_data(time_s, target_values)
+                measured_line.set_data(time_s, measured_values)
+                valid = np.flatnonzero(
+                    np.isfinite(target_values) & np.isfinite(measured_values)
+                )
+                if valid.size:
+                    latest_error = (
+                        measured_values[valid[-1]] - target_values[valid[-1]]
+                    )
+                    latest_arm_errors.append(latest_error)
+                    axis.set_title(
+                        f"{G1_JOINT_NAMES[joint_index]} | "
+                        f"error={latest_error:+.3f} rad"
+                    )
+                else:
+                    axis.set_title(
+                        f"{G1_JOINT_NAMES[joint_index]} | error=n/a"
+                    )
+            else:
+                target_line.set_data([], [])
+                measured_line.set_data([], [])
+                axis.set_title(
+                    f"{G1_JOINT_NAMES[joint_index]} | missing CSV fields"
+                )
+            axis.relim()
+            axis.autoscale_view()
+
+        if arm_tracking_status is not None:
+            if latest_arm_errors:
+                error_values = np.asarray(latest_arm_errors, dtype=float)
+                arm_tracking_status.set_text(
+                    "Arm target vs measured "
+                    f"| latest RMS={np.sqrt(np.mean(error_values**2)):.3f} rad "
+                    f"| max abs={np.max(np.abs(error_values)):.3f} rad"
+                )
+            else:
+                arm_tracking_status.set_text(
+                    "Arm target vs measured | Waiting for valid arm samples"
+                )
+            assert arm_tracking_figure is not None
+            arm_tracking_figure.canvas.draw_idle()
+
         for axis in joint_axes:
             axis.relim()
             axis.autoscale_view()
@@ -681,6 +790,10 @@ def main() -> None:
         status_text = f"G1 Navigation | source={source} | {state}"
         pose_status.set_text(status_text)
         joint_status.set_text(status_text)
+        if arm_tracking_status is not None and not latest_arm_errors:
+            arm_tracking_status.set_text(
+                f"Arm target vs measured | {status_text} | no valid samples"
+            )
         return ()
 
     animation = FuncAnimation(
@@ -689,9 +802,11 @@ def main() -> None:
         interval=args.interval_ms,
         cache_frame_data=False,
     )
-    # Keep references on both windows for GUI backends that collect animations.
+    # Keep references on every window for GUI backends that collect animations.
     pose_figure._navigation_animation = animation  # type: ignore[attr-defined]
     joint_figure._navigation_animation = animation  # type: ignore[attr-defined]
+    if arm_tracking_figure is not None:
+        arm_tracking_figure._navigation_animation = animation  # type: ignore[attr-defined]
     plt.show()
 
 
