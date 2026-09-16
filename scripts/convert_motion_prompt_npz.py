@@ -311,14 +311,16 @@ def run_sim(
         ):
           log[k] = np.stack(log[k], axis=0)
         np.savez(output_path, **log)  # type: ignore[arg-type]
+        print(f"Saved train/deploy motion NPZ: {os.path.abspath(output_path)}")
 
 
 def main(
   robot: str,
   input_file: str,
-  output_name: str,
+  output_name: str | None = None,
   input_fps: float = 30.0,
   output_fps: float = 50.0,
+  output_path: str | None = None,
   device: str = "cuda:0",
   render: bool = False,
   line_range: tuple[int, int] | None = None,
@@ -327,9 +329,10 @@ def main(
 
   Args:
     input_file: Path to the input MotionPrompt NPZ file.
-    output_name: Path to the output npz file.
+    output_name: Output filename under the robot's default motion directory.
     input_fps: Frame rate of the input NPZ file.
     output_fps: Desired output frame rate.
+    output_path: Exact output file path. Overrides output_name when specified.
     device: Device to use.
     render: Whether to render the simulation and save a video.
     line_range: Range of input frames to process.
@@ -423,10 +426,16 @@ def main(
       scene=scene,
     )
     renderer.initialize()
-  os.makedirs(output_dir, exist_ok=True)
-  if not output_name.endswith(".npz"):
-    output_name += ".npz"
-  output_path = os.path.join(output_dir, output_name)
+  if output_path is None:
+    if output_name is None:
+      raise ValueError("Specify either --output-name or --output-path.")
+    if not output_name.endswith(".npz"):
+      output_name += ".npz"
+    output_path = os.path.join(output_dir, output_name)
+  elif not output_path.endswith(".npz"):
+    output_path += ".npz"
+  output_parent = os.path.dirname(os.path.abspath(output_path))
+  os.makedirs(output_parent, exist_ok=True)
 
   run_sim(
     sim=sim,
