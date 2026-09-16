@@ -3,7 +3,7 @@
 #include "isaaclab/envs/mdp/observations/observations.h"
 #include "isaaclab/envs/mdp/actions/joint_actions.h"
 
-static Eigen::Quaternionf init_quat;
+static Eigen::Quaternionf init_quat = Eigen::Quaternionf::Identity();
 std::shared_ptr<State_Mimic::MotionLoader_> State_Mimic::motion = nullptr;
 
 
@@ -35,6 +35,13 @@ Eigen::Quaternionf motion_anchor_quat_w(std::shared_ptr<State_Mimic::MotionLoade
 
 //    return root_quat;
     return torso_quat;
+}
+
+void align_mimic_heading(isaaclab::ManagerBasedRLEnv* env)
+{
+    auto ref_yaw = isaaclab::yawQuaternion(State_Mimic::motion->root_quaternion()).toRotationMatrix();
+    auto robot_yaw = isaaclab::yawQuaternion(robot_quat_w(env)).toRotationMatrix();
+    init_quat = robot_yaw * ref_yaw.transpose();
 }
 
 

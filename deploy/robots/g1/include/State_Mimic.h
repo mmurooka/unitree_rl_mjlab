@@ -35,6 +35,14 @@ private:
 class State_Mimic::MotionLoader_
 {
 public:
+    // Placeholder for constructing the online policy before the first request.
+    MotionLoader_() : dt(0.02f), num_frames(1), duration(0.02f), frame(0)
+    {
+        root_positions.emplace_back(Eigen::Vector3f::Zero());
+        root_quaternions.emplace_back(Eigen::Quaternionf::Identity());
+        dof_positions.emplace_back(Eigen::VectorXf::Zero(29));
+        dof_velocities.emplace_back(Eigen::VectorXf::Zero(29));
+    }
     MotionLoader_(std::string motion_file)
     : dt(1.0f / 50.0f)
     {
@@ -49,10 +57,30 @@ public:
     {
         cnpy::npz_t npz_data = cnpy::npz_load(motion_file);
 
-        auto body_pos_w  = npz_data["body_pos_w"];   // [frame, body_id, 3]
-        auto body_quat_w = npz_data["body_quat_w"];  // [frame, body_id, 4]
-        auto joint_pos   = npz_data["joint_pos"];    // [frame, dof]
-        auto joint_vel   = npz_data["joint_vel"];    // [frame, dof]
+        auto body_pos_w  = npz_data.at("body_pos_w");   // [frame, body_id, 3]
+        auto body_quat_w = npz_data.at("body_quat_w");  // [frame, body_id, 4]
+        auto joint_pos   = npz_data.at("joint_pos");    // [frame, dof]
+        auto joint_vel   = npz_data.at("joint_vel");    // [frame, dof]
+
+        if (body_pos_w.shape.size() != 3 || body_pos_w.shape[0] == 0 ||
+            body_pos_w.shape[1] == 0 || body_pos_w.shape[2] != 3 ||
+            body_quat_w.shape.size() != 3 ||
+            body_quat_w.shape[0] != body_pos_w.shape[0] ||
+            body_quat_w.shape[1] != body_pos_w.shape[1] || body_quat_w.shape[2] != 4 ||
+            joint_pos.shape.size() != 2 || joint_pos.shape[0] != body_pos_w.shape[0] ||
+            joint_pos.shape[1] != 29 || joint_vel.shape != joint_pos.shape) {
+            throw std::runtime_error("Invalid G1 policy motion array shapes");
+        }
+        for (const auto* array : {&body_pos_w, &body_quat_w, &joint_pos, &joint_vel}) {
+            if (array->word_size != sizeof(float) || array->fortran_order) {
+                throw std::runtime_error("Policy motion requires C-order float32 arrays");
+            }
+            for (size_t i = 0; i < array->num_vals; ++i) {
+                if (!std::isfinite(array->data<float>()[i])) {
+                    throw std::runtime_error("Non-finite policy motion value");
+                }
+            }
+        }
 
         root_positions.clear();
         root_quaternions.clear();
@@ -75,6 +103,9 @@ public:
                 body_quat_w.data<float>()[i * body_stride_quat + 2], // y
                 body_quat_w.data<float>()[i * body_stride_quat + 3]  // z
             );
+            if (std::abs(quat.norm() - 1.0f) > 1e-3f) {
+                throw std::runtime_error("Policy motion contains a non-unit quaternion");
+            }
             root_quaternions.push_back(quat);
 
             Eigen::VectorXf joint_position(joint_pos.shape[1]);
@@ -132,6 +163,9 @@ public:
     std::vector<Eigen::VectorXf> dof_velocities;
     Eigen::Matrix3f world_to_init_;
 };
+
+
+void align_mimic_heading(isaaclab::ManagerBasedRLEnv* env);
 
 
 REGISTER_FSM(State_Mimic)

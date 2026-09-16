@@ -314,29 +314,7 @@ def run_sim(
         print(f"Saved train/deploy motion NPZ: {os.path.abspath(output_path)}")
 
 
-def main(
-  robot: str,
-  input_file: str,
-  output_name: str | None = None,
-  input_fps: float = 30.0,
-  output_fps: float = 50.0,
-  output_path: str | None = None,
-  device: str = "cuda:0",
-  render: bool = False,
-  line_range: tuple[int, int] | None = None,
-):
-  """Replay raw MotionPrompt NPZ and output a train/deploy NPZ file.
-
-  Args:
-    input_file: Path to the input MotionPrompt NPZ file.
-    output_name: Output filename under the robot's default motion directory.
-    input_fps: Frame rate of the input NPZ file.
-    output_fps: Desired output frame rate.
-    output_path: Exact output file path. Overrides output_name when specified.
-    device: Device to use.
-    render: Whether to render the simulation and save a video.
-    line_range: Range of input frames to process.
-  """
+def create_conversion_scene(robot: str, output_fps: float, device: str):
   sim_cfg = SimulationCfg()
   sim_cfg.mujoco.timestep = 1.0 / output_fps
   if robot == "g1":    # 29 Dof
@@ -409,6 +387,44 @@ def main(
   sim = Simulation(num_envs=1, cfg=sim_cfg, model=model, device=device)
 
   scene.initialize(sim.mj_model, sim.model, sim.data)
+
+  return sim, scene, joint_names, output_dir
+
+
+class MotionPromptConverter:
+  """Persistent equivalent of the offline CLI, with the same FK and sampling."""
+  def __init__(self, robot: str = "g1", device: str = "cpu"):
+    self.sim, self.scene, self.joint_names, _ = create_conversion_scene(robot, 50.0, device)
+
+  def convert(self, input_file: str, output_file: str):
+    run_sim(self.sim, self.scene, self.joint_names, input_file,
+            50.0, 50.0, output_file, False, None)
+
+
+def main(
+  robot: str,
+  input_file: str,
+  output_name: str | None = None,
+  input_fps: float = 30.0,
+  output_fps: float = 50.0,
+  output_path: str | None = None,
+  device: str = "cuda:0",
+  render: bool = False,
+  line_range: tuple[int, int] | None = None,
+):
+  """Replay raw MotionPrompt NPZ and output a train/deploy NPZ file.
+
+  Args:
+    input_file: Path to the input MotionPrompt NPZ file.
+    output_name: Output filename under the robot's default motion directory.
+    input_fps: Frame rate of the input NPZ file.
+    output_fps: Desired output frame rate.
+    output_path: Exact output file path. Overrides output_name when specified.
+    device: Device to use.
+    render: Whether to render the simulation and save a video.
+    line_range: Range of input frames to process.
+  """
+  sim, scene, joint_names, output_dir = create_conversion_scene(robot, output_fps, device)
 
   renderer = None
   if render:

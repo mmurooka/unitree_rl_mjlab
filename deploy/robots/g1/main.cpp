@@ -3,6 +3,7 @@
 #include "FSM/State_FixStand.h"
 #include "FSM/State_RLBase.h"
 #include "State_Mimic.h"
+#include "State_OnlineMimic.h"
 #include "State_Navigation.h"
 
 #ifdef G1_NAVIGATION_WITH_ROS2
@@ -85,6 +86,7 @@ int main(int argc, char** argv)
     std::cout << "In arm-enabled Navigation, press [L1 + Up/Down] for the basic raised/lowered arms.\n";
     std::cout << "Press [L1 + Right] for a random evaluated carrying pose.\n";
     std::cout << "And then press [R1 + A/B/Y/X] to control the robot dance.\n";
+    std::cout << "Press [R1 + Y] from Velocity to wait for online MotionPrompt (zero velocity).\n";
 
     while (true)
     {

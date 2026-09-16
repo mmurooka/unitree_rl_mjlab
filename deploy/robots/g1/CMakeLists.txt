@@ -11,6 +11,7 @@ option(
 find_package(Boost REQUIRED COMPONENTS program_options)
 find_package(yaml-cpp REQUIRED)
 find_package(ZLIB REQUIRED)
+find_library(ZMQ_LIBRARY zmq REQUIRED)
 if(G1_NAVIGATION_WITH_ROS2)
   find_package(nav_msgs REQUIRED)
   find_package(rclcpp REQUIRED)
@@ -48,6 +49,7 @@ link_libraries(
   ${ONNXRUNTIME_DIR}/lib/libonnxruntime.so.1.22.0
   cnpy_lib
   ZLIB::ZLIB
+  ${ZMQ_LIBRARY}
 )
 
 file(GLOB_RECURSE ADD_SRC_LIST
@@ -70,3 +72,9 @@ endif()
 
 add_executable(g1_ctrl main.cpp)
 target_link_libraries(g1_ctrl PRIVATE ${PROJECT_NAME}_lib)
+
+option(G1_BUILD_ONLINE_TESTS "Build isolated online motion smoke test (no motor publisher)" OFF)
+if(G1_BUILD_ONLINE_TESTS)
+  add_executable(test_online_motion tests/test_online_motion.cpp)
+  target_link_libraries(test_online_motion PRIVATE ${PROJECT_NAME}_lib)
+endif()
