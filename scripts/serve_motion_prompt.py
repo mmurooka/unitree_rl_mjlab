@@ -13,11 +13,14 @@ import threading
 import numpy as np
 import zmq
 
+from motion_prompt_npz import read_motion_prompt_fps
+
 
 def validate_prompt(payload: bytes, dofs: int = 29):
     with np.load(io.BytesIO(payload), allow_pickle=False) as data:
-        if set(data.files) != {"format_version", "q_ref", "foot_contact"}:
-            raise ValueError("Expected only format_version, q_ref and foot_contact")
+        read_motion_prompt_fps(data)
+        if set(data.files) != {"format_version", "fps", "q_ref", "foot_contact"}:
+            raise ValueError("Expected only format_version, fps, q_ref and foot_contact")
         if data["format_version"].shape != () or data["format_version"].item() != 1:
             raise ValueError("Unsupported MotionPrompt format_version")
         q, contacts = data["q_ref"], data["foot_contact"]

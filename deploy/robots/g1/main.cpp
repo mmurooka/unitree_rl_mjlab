@@ -75,6 +75,12 @@ int main(int argc, char** argv)
         exit(-1);
     }
 
+    // Reception outlives individual Velocity/OnlineMimic state activations.
+    if (param::config["FSM"]["_"]["OnlineMimic"]) {
+        online_motion_service = std::make_shared<OnlineMotionService>(
+            param::config["FSM"]["OnlineMimic"]);
+    }
+
     // Initialize FSM
     auto fsm = std::make_unique<CtrlFSM>(param::config["FSM"]);
     fsm->start();
@@ -86,7 +92,8 @@ int main(int argc, char** argv)
     std::cout << "In arm-enabled Navigation, press [L1 + Up/Down] for the basic raised/lowered arms.\n";
     std::cout << "Press [L1 + Right] for a random evaluated carrying pose.\n";
     std::cout << "And then press [R1 + A/B/Y/X] to control the robot dance.\n";
-    std::cout << "Press [R1 + Y] from Velocity to wait for online MotionPrompt (zero velocity).\n";
+    std::cout << "Velocity accepts online MotionPrompt and enters OnlineMimic automatically.\n";
+    std::cout << "OnlineMimic holds the final pose; press [R2 + A] to return to Velocity.\n";
 
     while (true)
     {

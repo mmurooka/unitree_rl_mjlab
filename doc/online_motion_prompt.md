@@ -1,8 +1,11 @@
 # Online MotionPrompt (G1 29 DoF)
 
 The TaskPromptRL sender transmits one existing MotionPrompt NPZ per ZMQ request.
-No robot, joint order, FPS, or motion ID is added to the payload. Input/output
-are 50 Hz. The default transport is local ZMQ IPC, not a custom TCP protocol.
+The NPZ contains `format_version`, `fps`, `q_ref`, and `foot_contact`.
+`fps` is a positive finite numeric scalar specifying the input sample rate.
+No robot, joint order, or motion ID is added to the payload. Conversion reads
+input FPS from the NPZ and outputs 50 Hz for deploy. The default transport is
+local ZMQ IPC, not a custom TCP protocol.
 
 ## Setup
 
@@ -32,22 +35,32 @@ simulation; use your existing DDS interface for other deployments. Either child
 exiting stops the other. The converter can also be launched separately with
 `python scripts/serve_motion_prompt.py`.
 
-Enter FixStand, then Velocity through the normal controls. **R1 + Y** enters
-OnlineMimic; **R2 + A** returns to ordinary Velocity. OnlineMimic waits using the
-velocity policy with x/y/yaw commands clamped to zero, including joystick
-commands. Passive transitions remain available. Sending while inactive returns
-an error and does not change the controller's FSM state.
+Enter FixStand, then Velocity through the normal controls. Velocity retains
+normal joystick commands while waiting. The first valid motion automatically
+transitions to OnlineMimic; no extra button press is required. OnlineMimic uses
+only the tracking policy, including while holding the final reference. **R2 + A**
+explicitly returns to Velocity. Passive transitions remain available. Requests
+in other states return an error without changing the FSM state.
+
+`OnlineMotionService` manages reception independently of the states.
+The existing `State_RLBase` used by Velocity enables reception and the automatic
+transition when the online service is configured; it does not clamp velocity commands.
+The first motion is checked before leaving Velocity and again at OnlineMimic
+entry. Rejected requests leave the current policy running (or return to Velocity
+if the measured pose changed during the transition).
 
 Generate/send using TaskPromptRL's `scripts/send_motion_prompt.py`. Its default
 interactive mode reuses the initialized IK object; Enter generates a motion
 using the command-line parameters, and `q` quits. `--once` sends immediately;
-`--input-file FILE.npz` sends an existing 50 Hz file once.
+`--input-file FILE.npz` sends an existing file containing `fps` once.
 
 ## Playback contract
 
 - The Python receiver validates the existing NPZ and uses a persistent
   `MotionPromptConverter`, preserving offline interpolation, velocity
-  calculation, and all-body FK. The model is initialized once.
+  calculation, and all-body FK. Both offline and online conversion read the
+  input rate from the NPZ's `fps` field; there is no `--input-fps` argument.
+  Files without `fps` must be regenerated. The model is initialized once.
 - The worker stores the converted NPZ and notifies the C++ receiver over
   `ipc:///tmp/task_prompt_rl_deploy.sock`. These two processes must share a
   filesystem. C++ reads and validates the file outside the control loop.
@@ -59,16 +72,20 @@ using the command-line parameters, and `q` quits. `--once` sends immediately;
   observation/action histories, and starts at frame zero. Absolute position is
   not a tracking observation. Root orientation still contributes to the
   relative torso orientation observation.
-- Each converted frame runs for 20 ms. After the last frame's interval, the
-  last position/orientation is held, reference joint velocity is zero, and the
-  final phase is retained for `end_hold_seconds` (default 1.0). Waiting then
-  resumes with zero velocity. Motions should end in a standing pose.
+- Each converted frame runs for 20 ms. After the last frame's interval,
+  OnlineMimic keeps running the same policy with the final position/orientation,
+  zero reference joint velocity, and the final phase. It does not automatically
+  return to Velocity, and the final pose need not match Velocity's standing pose.
+  The policy must support sustained tracking of that final reference.
+- The next motion is accepted immediately after playback ends, with no extra
+  delay. It passes the same measured-joint check and replaces the reference
+  inside OnlineMimic. A rejected request leaves the held reference unchanged.
 - `motion_phase` has one float32 element, `frame / num_frames`, not seconds.
   The final value is `(num_frames - 1) / num_frames`, strictly below 1. Only
   policies configured with this observation consume it; online mode does not
   alter the policy input dimension.
-- Conversion, playback, and holding do not accept a replacement or queue.
-  Requests receive `BUSY`. Automatic retry is disabled. `STARTED` acknowledges
+- Conversion and playback do not accept a replacement or queue; requests receive
+  `BUSY`. Holding accepts a new motion. Automatic retry is disabled. `STARTED` acknowledges
   acceptance by the control loop, not completion of the physical motion.
   A reply timeout leaves the execution outcome unknown; inspect deploy before
   manually submitting again. After full reception, playback does not depend on
@@ -95,7 +112,7 @@ until explicitly cleaned up.
 ```sh
 python scripts/convert_motion_prompt_npz.py --robot g1 \
   --input-file /tmp/task_prompt_rl/received/motion_EXAMPLE/motion_prompt.npz \
-  --input-fps 50 --output-fps 50 --device cpu \
+  --output-fps 50 --device cpu \
   --output-path /tmp/reconverted_policy_input.npz
 ```
 

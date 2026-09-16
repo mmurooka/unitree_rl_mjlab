@@ -75,7 +75,6 @@ FSM:
     transitions: 
       Passive: LT + B.on_pressed
       Mimic_walk: RB + A.on_pressed
-      OnlineMimic: RB + Y.on_pressed
       Navigation: RT + !LT + B.on_pressed
 
     policy_dir: config/policy/velocity
@@ -108,7 +107,5 @@ FSM:
       Velocity: RT + A.on_pressed
 
     policy_dir: config/policy/mimic/walk_1000/
-    stand_policy_dir: config/policy/velocity
     endpoint: ipc:///tmp/task_prompt_rl_deploy.sock
     start_joint_threshold_degrees: 30.0
-    end_hold_seconds: 1.0

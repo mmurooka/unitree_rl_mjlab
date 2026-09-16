@@ -1,4 +1,5 @@
 #include "FSM/State_RLBase.h"
+#include "OnlineMotionService.h"
 #include "unitree_articulation.h"
 #include "isaaclab/envs/mdp/observations/observations.h"
 #include "isaaclab/envs/mdp/actions/joint_actions.h"
@@ -49,6 +50,31 @@ State_RLBase::State_RLBase(int state_mode, std::string state_string)
             FSMStringMap.right.at("Passive")
         )
     );
+
+    if (state_string == "Velocity" && online_motion_service &&
+        FSMStringMap.right.count("OnlineMimic")) {
+        const auto service = online_motion_service;
+        on_enter_ = [service] { service->activate_velocity(); };
+        on_exit_ = [service] { service->leave_velocity(); };
+        // Keep normal joystick control and existing user/safety transition priority.
+        registered_checks.emplace_back([service] {
+            auto request = service->claim(OnlineMotionService::Mode::Velocity);
+            if (!request) return false;
+            Eigen::VectorXf actual(29);
+            {
+                std::lock_guard<std::mutex> lock(FSMState::lowstate->mutex_);
+                for (int i = 0; i < 29; ++i) {
+                    actual[i] = FSMState::lowstate->msg_.motor_state()[i].q();
+                }
+            }
+            const auto error = service->start_error(*request, actual);
+            if (!error.empty()) {
+                service->reject(request, error);
+                return false;
+            }
+            return service->prepare_transition(request);
+        }, FSMStringMap.right.at("OnlineMimic"));
+    }
 }
 
 void State_RLBase::run()

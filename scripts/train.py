@@ -68,17 +68,25 @@ def run_train(task_id: str, cfg: TrainConfig, log_dir: Path) -> None:
 
   if is_tracking_task:
     if not cfg.motion_files:
-      raise ValueError("For tracking tasks, --motion-file must be set ...")
-    motion_paths = [Path(file).expanduser().resolve() for file in Path(cfg.motion_files).glob("*.npz")]
+      raise ValueError("For tracking tasks, --motion-files must be set.")
+    motion_input = Path(cfg.motion_files).expanduser()
+    if motion_input.is_file():
+      motion_paths = [motion_input.resolve()]
+    elif motion_input.is_dir():
+      motion_paths = sorted(path.resolve() for path in motion_input.glob("*.npz"))
+    else:
+      raise FileNotFoundError(f"Motion file or directory not found: {motion_input}")
+    if not motion_paths:
+      raise FileNotFoundError(f"No .npz motion files found in: {motion_input}")
     for path in motion_paths:
-      if not path.exists():
-        raise FileNotFoundError(f"Motion file not found: {path}")
+      if path.suffix != ".npz":
+        raise ValueError(f"Motion file must have a .npz extension: {path}")
     motion_cmd = cfg.env.commands["motion"]
     assert isinstance(motion_cmd, MotionCommandCfg)
     motion_cmd.motion_files = [str(path) for path in motion_paths]
     print(f"[INFO] Using motion file: {motion_cmd.motion_files}")
 
-    # Check if motion_file is already set (e.g., via CLI --env.commands.motion.motion-file).
+    # Check if motion files are already set (e.g., via CLI configuration).
     if motion_cmd.motion_files and all(Path(file).exists() for file in motion_cmd.motion_files):
       print(f"[INFO] Using local motion file: {motion_cmd.motion_files}")
 

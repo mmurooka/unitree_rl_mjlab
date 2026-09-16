@@ -6,6 +6,7 @@
 #include "FSMState.h"
 #include "isaaclab/envs/mdp/actions/joint_actions.h"
 #include "isaaclab/envs/mdp/terminations.h"
+#include <functional>
 
 class State_RLBase : public FSMState
 {
@@ -44,12 +45,14 @@ public:
                 sleepTill += dt;
             }
         });
+        if (on_enter_) on_enter_();
     }
 
     void run();
     
     void exit()
     {
+        if (on_exit_) on_exit_();
         policy_thread_running = false;
         if (policy_thread.joinable()) {
             policy_thread.join();
@@ -57,6 +60,8 @@ public:
     }
 
 private:
+    // Optional robot-specific lifecycle integration (unused by other robots).
+    std::function<void()> on_enter_, on_exit_;
     std::unique_ptr<isaaclab::ManagerBasedRLEnv> env;
 
     std::thread policy_thread;

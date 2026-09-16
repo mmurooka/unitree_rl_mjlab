@@ -1,10 +1,8 @@
 #pragma once
 
-#include "State_Mimic.h"
+#include "OnlineMotionService.h"
 #include <atomic>
-#include <future>
 #include <mutex>
-#include <zmq.hpp>
 
 class State_OnlineMimic : public FSMState
 {
@@ -16,25 +14,19 @@ public:
     void exit() override;
 
 private:
-    using Loader = State_Mimic::MotionLoader_;
-    struct Request {
-        std::shared_ptr<Loader> motion;
-        std::promise<std::string> result;
-    };
-    enum class Status { Inactive, Ready, Busy };
-    void receive();
+    using Loader = OnlineMotionService::Loader;
+    bool start_motion(const std::shared_ptr<OnlineMotionService::Request>& request);
     void control();
-    void publish_action(isaaclab::ManagerBasedRLEnv* env);
-    std::unique_ptr<isaaclab::ManagerBasedRLEnv> tracking_, standing_;
-    std::atomic<Status> status_{Status::Inactive};
-    std::atomic<bool> running_{false}, receiving_{true}, bad_orientation_{false};
-    std::thread control_thread_, receiver_thread_;
-    zmq::context_t context_{1};
-    zmq::socket_t socket_{context_, zmq::socket_type::rep};
-    std::mutex request_mutex_, action_mutex_;
-    std::shared_ptr<Request> pending_;
+    void publish_action();
+    std::shared_ptr<OnlineMotionService> service_;
+    std::unique_ptr<isaaclab::ManagerBasedRLEnv> tracking_;
+    std::shared_ptr<Loader> playing_;
+    size_t tick_ = 0;
+    bool holding_ = false;
+    std::atomic<bool> running_{false}, bad_orientation_{false}, return_to_velocity_{false};
+    std::thread control_thread_;
+    std::mutex action_mutex_;
     std::vector<float> target_, kp_, kd_;
-    float threshold_, hold_seconds_;
 };
 
 REGISTER_FSM(State_OnlineMimic)

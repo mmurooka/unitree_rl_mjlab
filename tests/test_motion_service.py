@@ -17,7 +17,7 @@ from serve_motion_prompt import MotionService, validate_prompt
 def payload():
     buffer = io.BytesIO()
     q = np.zeros((5, 36)); q[:, 6] = 1
-    np.savez(buffer, format_version=np.asarray(1, dtype=np.int64),
+    np.savez(buffer, format_version=np.asarray(1, dtype=np.int64), fps=50.0,
              q_ref=q, foot_contact=np.ones((5, 2)))
     return buffer.getvalue()
 
@@ -44,9 +44,27 @@ class ServiceTests(unittest.TestCase):
         with np.load(io.BytesIO(payload())) as d:
             q = d['q_ref']; q[0, 7] = np.nan
         b = io.BytesIO()
-        np.savez(b, format_version=1, q_ref=q, foot_contact=np.ones((5, 2)))
+        np.savez(b, format_version=1, fps=50.0, q_ref=q, foot_contact=np.ones((5, 2)))
         with self.assertRaisesRegex(ValueError, 'Non-finite'):
             validate_prompt(b.getvalue())
+
+    def test_fps_is_required_and_validated(self):
+        with np.load(io.BytesIO(payload())) as data:
+            arrays = {key: data[key] for key in data.files if key != 'fps'}
+        missing = io.BytesIO()
+        np.savez(missing, **arrays)
+        with self.assertRaisesRegex(ValueError, "missing 'fps'"):
+            validate_prompt(missing.getvalue())
+        for fps in (0, -50, np.nan, np.inf, [50], '50', True):
+            with self.subTest(fps=fps):
+                stream = io.BytesIO()
+                np.savez(stream, **arrays, fps=fps)
+                with self.assertRaisesRegex(ValueError, 'fps'):
+                    validate_prompt(stream.getvalue())
+        for fps in (25.0, 50.0, 100.0, 200.0):
+            stream = io.BytesIO()
+            np.savez(stream, **arrays, fps=fps)
+            validate_prompt(stream.getvalue())
 
     def check_service(self, save_debug):
         with tempfile.TemporaryDirectory() as folder, zmq.Context() as context:

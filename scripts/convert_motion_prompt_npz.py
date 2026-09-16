@@ -20,21 +20,19 @@ from mjlab.utils.lab_api.math import (
 )
 from mjlab.viewer.offscreen_renderer import OffscreenRenderer
 from mjlab.viewer.viewer_config import ViewerConfig
+from motion_prompt_npz import read_motion_prompt_fps
 
 
 class MotionPromptLoader:
   def __init__(
     self,
     motion_file: str,
-    input_fps: int,
-    output_fps: int,
+    output_fps: float,
     device: torch.device | str,
     line_range: tuple[int, int] | None = None,
   ):
     self.motion_file = motion_file
-    self.input_fps = input_fps
     self.output_fps = output_fps
-    self.input_dt = 1.0 / self.input_fps
     self.output_dt = 1.0 / self.output_fps
     self.current_idx = 0
     self.device = device
@@ -45,7 +43,8 @@ class MotionPromptLoader:
 
   def _load_motion(self):
     """Loads a raw MotionPrompt NPZ file."""
-    with np.load(self.motion_file) as data:
+    with np.load(self.motion_file, allow_pickle=False) as data:
+      self.input_fps = read_motion_prompt_fps(data)
       q_ref = np.asarray(data["q_ref"], dtype=np.float32)
       foot_contact = np.asarray(data["foot_contact"], dtype=np.float32)
 
@@ -64,6 +63,7 @@ class MotionPromptLoader:
     self.motion_contact_input = torch.from_numpy(foot_contact).to(self.device)
 
     self.input_frames = q_ref.shape[0]
+    self.input_dt = 1.0 / self.input_fps
     self.duration = (self.input_frames - 1) * self.input_dt
 
   def _interpolate_motion(self):
@@ -72,6 +72,8 @@ class MotionPromptLoader:
       0, self.duration, self.output_dt, device=self.device, dtype=torch.float32
     )
     self.output_frames = times.shape[0]
+    if self.output_frames < 3:
+      raise ValueError("Motion is too short to compute velocities at the output FPS (need at least 3 frames)")
     index_0, index_1, blend = self._compute_frame_blend(times)
     self.motion_base_poss = self._lerp(
       self.motion_base_poss_input[index_0],
@@ -187,7 +189,6 @@ def run_sim(
   scene: Scene,
   joint_names,
   input_file,
-  input_fps,
   output_fps,
   output_path,
   render,
@@ -196,7 +197,6 @@ def run_sim(
 ):
   motion = MotionPromptLoader(
     motion_file=input_file,
-    input_fps=input_fps,
     output_fps=output_fps,
     device=sim.device,
     line_range=line_range,
@@ -398,14 +398,13 @@ class MotionPromptConverter:
 
   def convert(self, input_file: str, output_file: str):
     run_sim(self.sim, self.scene, self.joint_names, input_file,
-            50.0, 50.0, output_file, False, None)
+            50.0, output_file, False, None)
 
 
 def main(
   robot: str,
   input_file: str,
   output_name: str | None = None,
-  input_fps: float = 30.0,
   output_fps: float = 50.0,
   output_path: str | None = None,
   device: str = "cuda:0",
@@ -415,9 +414,8 @@ def main(
   """Replay raw MotionPrompt NPZ and output a train/deploy NPZ file.
 
   Args:
-    input_file: Path to the input MotionPrompt NPZ file.
+    input_file: Path to the input MotionPrompt NPZ file, including its fps field.
     output_name: Output filename under the robot's default motion directory.
-    input_fps: Frame rate of the input NPZ file.
     output_fps: Desired output frame rate.
     output_path: Exact output file path. Overrides output_name when specified.
     device: Device to use.
@@ -457,7 +455,6 @@ def main(
     sim=sim,
     scene=scene,
     joint_names=joint_names,
-    input_fps=input_fps,
     input_file=input_file,
     output_fps=output_fps,
     output_path=output_path,
