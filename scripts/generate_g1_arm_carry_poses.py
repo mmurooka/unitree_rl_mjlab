@@ -60,14 +60,32 @@ def _parse_args() -> argparse.Namespace:
   parser.add_argument(
     "--transition-steps",
     type=int,
-    default=9,
-    help="Collision checks along interpolation from the original raised pose.",
+    default=41,
+    help="Collision checks along interpolation from the arm-down pose.",
   )
   parser.add_argument(
     "--minimum-rms-distance-rad",
     type=float,
     default=0.10,
     help="Minimum RMS joint-space separation between raised poses.",
+  )
+  parser.add_argument(
+    "--asymmetric-pose-fraction",
+    type=float,
+    default=0.5,
+    help=(
+      "Fraction of generated random poses that must be left/right "
+      "asymmetric (default: 0.5)."
+    ),
+  )
+  parser.add_argument(
+    "--minimum-asymmetry-rms-rad",
+    type=float,
+    default=0.12,
+    help=(
+      "Minimum left/right mirrored joint RMS difference for poses classified "
+      "as asymmetric (default: 0.12 rad)."
+    ),
   )
   parser.add_argument("--max-attempts", type=int, default=50_000)
   return parser.parse_args()
@@ -105,14 +123,14 @@ class PoseValidator:
 
   def __init__(
     self,
-    reference_pose: np.ndarray,
+    transition_start_pose: np.ndarray,
     joint_limit_margin_rad: float,
     transition_steps: int,
   ):
     robot = Entity(get_g1_robot_cfg())
     self.model = robot.spec.compile()
     self.data = mujoco.MjData(self.model)
-    self.reference_pose = reference_pose
+    self.transition_start_pose = transition_start_pose
     self.joint_limit_margin_rad = joint_limit_margin_rad
     self.transition_steps = transition_steps
 
@@ -133,14 +151,19 @@ class PoseValidator:
         for name in G1_ARM_JOINT_NAMES
       ]
     )
-    self.body_ids = {
-      name: mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, name)
-      for name in (
-        "torso_link",
-        "left_wrist_yaw_link",
-        "right_wrist_yaw_link",
+    self.torso_body_id = mujoco.mj_name2id(
+      self.model, mujoco.mjtObj.mjOBJ_BODY, "torso_link"
+    )
+    self.palm_site_ids = {
+      side: mujoco.mj_name2id(
+        self.model, mujoco.mjtObj.mjOBJ_SITE, f"{side}_palm"
       )
+      for side in ("left", "right")
     }
+    if self.torso_body_id < 0 or any(
+      site_id < 0 for site_id in self.palm_site_ids.values()
+    ):
+      raise ValueError("The G1 model must define torso_link and both palm sites.")
 
   def reset_to_pose(self, pose: np.ndarray) -> None:
     mujoco.mj_resetDataKeyframe(self.model, self.data, 0)
@@ -154,7 +177,7 @@ class PoseValidator:
 
   def _has_collision_free_transition(self, pose: np.ndarray) -> bool:
     for alpha in np.linspace(0.0, 1.0, self.transition_steps):
-      interpolated = (1.0 - alpha) * self.reference_pose + alpha * pose
+      interpolated = (1.0 - alpha) * self.transition_start_pose + alpha * pose
       self.reset_to_pose(interpolated)
       if self.data.ncon != 0:
         return False
@@ -162,9 +185,9 @@ class PoseValidator:
 
   def _has_carrying_geometry(self, pose: np.ndarray) -> bool:
     self.reset_to_pose(pose)
-    left = self.data.xpos[self.body_ids["left_wrist_yaw_link"]]
-    right = self.data.xpos[self.body_ids["right_wrist_yaw_link"]]
-    torso = self.data.xpos[self.body_ids["torso_link"]]
+    left = self.data.site_xpos[self.palm_site_ids["left"]]
+    right = self.data.site_xpos[self.palm_site_ids["right"]]
+    torso = self.data.xpos[self.torso_body_id]
     midpoint = 0.5 * (left + right)
 
     return bool(
@@ -189,8 +212,15 @@ class PoseValidator:
     return None
 
 
-def _sample_bilateral_pose(rng: np.random.Generator) -> np.ndarray:
-  """Sample a near-symmetric pose suitable for holding an object in front."""
+_RIGHT_TO_LEFT_SIGN = np.asarray([1.0, -1.0, -1.0, 1.0, -1.0, 1.0, -1.0])
+
+
+def _sample_bilateral_pose(
+  rng: np.random.Generator,
+  *,
+  asymmetric: bool,
+) -> np.ndarray:
+  """Sample a symmetric or deliberately asymmetric bilateral arm pose."""
   common = np.asarray(
     [
       rng.uniform(-0.30, 0.60),  # shoulder pitch
@@ -202,16 +232,33 @@ def _sample_bilateral_pose(rng: np.random.Generator) -> np.ndarray:
       rng.uniform(-0.12, 0.12),  # wrist yaw
     ]
   )
-  jitter = rng.normal(
-    loc=0.0,
-    scale=np.asarray([0.05, 0.035, 0.05, 0.06, 0.05, 0.05, 0.025]),
-    size=(2, 7),
-  )
+  if asymmetric:
+    # Apply opposite offsets in a left-arm canonical coordinate system. This
+    # creates genuine joint-space asymmetry while the carrying-geometry check
+    # below still requires the two palms to support the same object.
+    asymmetry = rng.normal(
+      loc=0.0,
+      scale=np.asarray([0.16, 0.07, 0.13, 0.14, 0.14, 0.12, 0.06]),
+    )
+    jitter_scale = np.asarray([0.025, 0.018, 0.025, 0.03, 0.03, 0.03, 0.015])
+    jitter = rng.normal(loc=0.0, scale=jitter_scale, size=(2, 7))
+    left = common + asymmetry + jitter[0]
+    right_canonical = common - asymmetry + jitter[1]
+  else:
+    jitter_scale = np.asarray([0.05, 0.035, 0.05, 0.06, 0.05, 0.05, 0.025])
+    jitter = rng.normal(loc=0.0, scale=jitter_scale, size=(2, 7))
+    left = common + jitter[0]
+    right_canonical = common + jitter[1] * _RIGHT_TO_LEFT_SIGN
 
-  left = common + jitter[0]
-  right = common * np.asarray([1.0, -1.0, -1.0, 1.0, -1.0, 1.0, -1.0])
-  right += jitter[1]
+  right = right_canonical * _RIGHT_TO_LEFT_SIGN
   return np.concatenate((left, right))
+
+
+def _side_asymmetry_rms(pose: np.ndarray) -> float:
+  """Return left/right RMS difference after mirroring the right arm."""
+  left = pose[:7]
+  right_canonical = pose[7:] * _RIGHT_TO_LEFT_SIGN
+  return float(np.sqrt(np.mean(np.square(left - right_canonical))))
 
 
 def _is_diverse(
@@ -232,16 +279,22 @@ def generate_pose_library(args: argparse.Namespace) -> tuple[int, Counter[str]]:
     raise ValueError("`--joint-limit-margin-rad` must be non-negative.")
   if args.minimum_rms_distance_rad < 0.0:
     raise ValueError("`--minimum-rms-distance-rad` must be non-negative.")
+  if not 0.0 <= args.asymmetric_pose_fraction <= 1.0:
+    raise ValueError("`--asymmetric-pose-fraction` must be in [0, 1].")
+  if args.minimum_asymmetry_rms_rad <= 0.0:
+    raise ValueError("`--minimum-asymmetry-rms-rad` must be positive.")
 
   arm_down = _load_motion_pose(args.arm_down_motion, (0, 80))
   arm_up = _load_motion_pose(args.arm_up_motion, (170, 260))
   validator = PoseValidator(
-    reference_pose=arm_up,
+    transition_start_pose=arm_down,
     joint_limit_margin_rad=args.joint_limit_margin_rad,
     transition_steps=args.transition_steps,
   )
   if not validator.within_joint_margins(arm_down):
     raise ValueError("The original arm-down pose violates the joint limit margin.")
+  if not validator._has_collision_free_transition(arm_down):
+    raise ValueError("The original arm-down pose is self-colliding.")
   reference_rejection = validator.rejection_reason(arm_up)
   if reference_rejection is not None:
     raise ValueError(
@@ -250,11 +303,38 @@ def generate_pose_library(args: argparse.Namespace) -> tuple[int, Counter[str]]:
 
   rng = np.random.default_rng(args.seed)
   raised_poses = [arm_up]
+  raised_pose_is_asymmetric = [False]
+  random_pose_count = args.num_raised_poses - 1
+  target_asymmetric_count = int(
+    round(random_pose_count * args.asymmetric_pose_fraction)
+  )
+  target_symmetric_count = random_pose_count - target_asymmetric_count
+  accepted_asymmetric_count = 0
+  accepted_symmetric_count = 0
   rejections: Counter[str] = Counter()
   attempts = 0
   while len(raised_poses) < args.num_raised_poses and attempts < args.max_attempts:
     attempts += 1
-    candidate = _sample_bilateral_pose(rng)
+    remaining_asymmetric = (
+      target_asymmetric_count - accepted_asymmetric_count
+    )
+    remaining_symmetric = target_symmetric_count - accepted_symmetric_count
+    asymmetric = bool(
+      remaining_asymmetric > 0
+      and (
+        remaining_symmetric == 0
+        or rng.random()
+        < remaining_asymmetric / (remaining_asymmetric + remaining_symmetric)
+      )
+    )
+    candidate = _sample_bilateral_pose(rng, asymmetric=asymmetric)
+    asymmetry_rms = _side_asymmetry_rms(candidate)
+    if asymmetric and asymmetry_rms < args.minimum_asymmetry_rms_rad:
+      rejections["insufficient_asymmetry"] += 1
+      continue
+    if not asymmetric and asymmetry_rms >= args.minimum_asymmetry_rms_rad:
+      rejections["excess_symmetric_asymmetry"] += 1
+      continue
     reason = validator.rejection_reason(candidate)
     if reason is not None:
       rejections[reason] += 1
@@ -267,6 +347,11 @@ def generate_pose_library(args: argparse.Namespace) -> tuple[int, Counter[str]]:
       rejections["too_similar"] += 1
       continue
     raised_poses.append(candidate)
+    raised_pose_is_asymmetric.append(asymmetric)
+    if asymmetric:
+      accepted_asymmetric_count += 1
+    else:
+      accepted_symmetric_count += 1
 
   if len(raised_poses) != args.num_raised_poses:
     raise RuntimeError(
@@ -277,7 +362,12 @@ def generate_pose_library(args: argparse.Namespace) -> tuple[int, Counter[str]]:
   poses = np.asarray([arm_down, *raised_poses], dtype=np.float32)
   pose_names = np.asarray(
     ["arm_down", "carry_reference"]
-    + [f"carry_random_{index:03d}" for index in range(1, len(raised_poses))]
+    + [
+      f"carry_{'asymmetric' if asymmetric else 'symmetric'}_{index:03d}"
+      for index, asymmetric in enumerate(
+        raised_pose_is_asymmetric[1:], start=1
+      )
+    ]
   )
   # Give down and raised conditions equal total probability. The raised half is
   # divided uniformly among all generated carrying poses.
@@ -286,6 +376,10 @@ def generate_pose_library(args: argparse.Namespace) -> tuple[int, Counter[str]]:
     dtype=np.float32,
   )
   is_raised = np.asarray([False] + [True] * len(raised_poses))
+  is_asymmetric = np.asarray([False, *raised_pose_is_asymmetric])
+  asymmetry_rms_rad = np.asarray(
+    [_side_asymmetry_rms(pose) for pose in poses], dtype=np.float32
+  )
 
   args.output.parent.mkdir(parents=True, exist_ok=True)
   np.savez_compressed(
@@ -295,6 +389,8 @@ def generate_pose_library(args: argparse.Namespace) -> tuple[int, Counter[str]]:
     poses=poses,
     sampling_weights=sampling_weights,
     is_raised=is_raised,
+    is_asymmetric=is_asymmetric,
+    asymmetry_rms_rad=asymmetry_rms_rad,
     seed=np.asarray(args.seed, dtype=np.int64),
     joint_limit_margin_rad=np.asarray(
       args.joint_limit_margin_rad, dtype=np.float32
@@ -303,6 +399,12 @@ def generate_pose_library(args: argparse.Namespace) -> tuple[int, Counter[str]]:
     minimum_rms_distance_rad=np.asarray(
       args.minimum_rms_distance_rad, dtype=np.float32
     ),
+    asymmetric_pose_fraction=np.asarray(
+      args.asymmetric_pose_fraction, dtype=np.float32
+    ),
+    minimum_asymmetry_rms_rad=np.asarray(
+      args.minimum_asymmetry_rms_rad, dtype=np.float32
+    ),
   )
   return attempts, rejections
 
@@ -310,9 +412,17 @@ def generate_pose_library(args: argparse.Namespace) -> tuple[int, Counter[str]]:
 def main() -> None:
   args = _parse_args()
   attempts, rejections = generate_pose_library(args)
+  random_pose_count = args.num_raised_poses - 1
+  asymmetric_count = int(round(
+    random_pose_count * args.asymmetric_pose_fraction
+  ))
   print(f"Saved: {args.output}")
   print(f"Poses: 1 down + {args.num_raised_poses} raised")
-  print(f"Accepted random samples: {args.num_raised_poses - 1}/{attempts}")
+  print(f"Accepted random samples: {random_pose_count}/{attempts}")
+  print(
+    f"Random pose mix: {asymmetric_count} asymmetric + "
+    f"{random_pose_count - asymmetric_count} symmetric"
+  )
   print(f"Rejections: {dict(rejections)}")
 
 

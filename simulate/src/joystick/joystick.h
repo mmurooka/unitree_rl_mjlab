@@ -23,6 +23,7 @@
 #include <sstream>
 #include <map>
 #include "unistd.h"
+#include <cstdint>
 
 
 #define JS_EVENT_BUTTON 0x01 // button pressed/released

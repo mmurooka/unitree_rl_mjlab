@@ -9,6 +9,8 @@
 #include <numeric>
 #include <stdexcept>
 
+#include <cnpy.h>
+
 #include "isaaclab/envs/mdp/actions/joint_actions.h"
 #include "isaaclab/envs/mdp/observations/observations.h"
 #include "isaaclab/envs/mdp/terminations.h"
@@ -49,6 +51,53 @@ float quaternion_heading(const Eigen::Quaternionf& quat)
 {
     const Eigen::Vector3f forward = quat * Eigen::Vector3f::UnitX();
     return std::atan2(forward.y(), forward.x());
+}
+
+std::vector<std::vector<float>> load_arm_pose_library(
+    const std::filesystem::path& path,
+    std::size_t expected_pose_dimension,
+    std::size_t first_pose_index)
+{
+    const cnpy::NpyArray poses = cnpy::npz_load(path.string(), "poses");
+    if (poses.shape.size() != 2 ||
+        poses.shape[1] != expected_pose_dimension ||
+        first_pose_index >= poses.shape[0] ||
+        poses.fortran_order) {
+        throw std::runtime_error(
+            "Arm pose library must contain a C-order (N, " +
+            std::to_string(expected_pose_dimension) + ") `poses` array: " +
+            path.string()
+        );
+    }
+
+    std::vector<std::vector<float>> result;
+    result.reserve(poses.shape[0] - first_pose_index);
+    for (std::size_t row = first_pose_index; row < poses.shape[0]; ++row) {
+        std::vector<float> pose(expected_pose_dimension);
+        for (std::size_t column = 0; column < expected_pose_dimension; ++column) {
+            const std::size_t flat_index = row * expected_pose_dimension + column;
+            if (poses.word_size == sizeof(float)) {
+                pose[column] = poses.data<float>()[flat_index];
+            } else if (poses.word_size == sizeof(double)) {
+                pose[column] = static_cast<float>(
+                    poses.data<double>()[flat_index]
+                );
+            } else {
+                throw std::runtime_error(
+                    "Arm pose library `poses` must use float32 or float64: " +
+                    path.string()
+                );
+            }
+            if (!std::isfinite(pose[column])) {
+                throw std::runtime_error(
+                    "Arm pose library contains a non-finite value: " +
+                    path.string()
+                );
+            }
+        }
+        result.push_back(std::move(pose));
+    }
+    return result;
 }
 
 }  // namespace
@@ -102,41 +151,9 @@ REGISTER_OBSERVATION(navigation_phase)
 REGISTER_OBSERVATION(navigation_arm_pose_commands)
 {
     const std::string command_name = params["command_name"].as<std::string>();
-    const std::string target_name = command_name + "_target";
-    const auto command_cfg = env->cfg["commands"][command_name];
-
-    auto command = env->get_command(command_name);
-    auto target = env->get_command(target_name);
-    if (command.empty()) {
-        const std::string default_pose =
-            command_cfg["default_pose"].as<std::string>("down");
-        command = command_cfg["poses"][default_pose].as<std::vector<float>>();
-        target = command;
-        env->set_command(target_name, target);
-    }
-    if (target.empty()) {
-        target = command;
-        env->set_command(target_name, target);
-    }
-    if (command.size() != target.size()) {
-        throw std::runtime_error(
-            "Arm pose command and target must have the same dimension."
-        );
-    }
-
-    const float max_joint_speed =
-        command_cfg["max_joint_speed"].as<float>(0.15f);
-    if (max_joint_speed <= 0.0f) {
-        throw std::runtime_error("Arm pose max_joint_speed must be positive.");
-    }
-    const float max_step = max_joint_speed * env->step_dt;
-    for (size_t i = 0; i < command.size(); ++i) {
-        const float error = target[i] - command[i];
-        command[i] += std::clamp(error, -max_step, max_step);
-    }
-
-    env->set_command(command_name, command);
-    return command;
+    return State_Navigation::instance()->update_arm_pose_command(
+        env, command_name
+    );
 }
 
 }  // namespace mdp
@@ -379,6 +396,58 @@ State_Navigation::State_Navigation(int state_mode, std::string state_string)
                 );
             }
         }
+        arm_down_pose = arm_pose_cfg["poses"]["down"]
+            .as<std::vector<float>>();
+        arm_up_pose = arm_pose_cfg["poses"]["up"]
+            .as<std::vector<float>>();
+        arm_pose_arrival_tolerance = arm_pose_cfg["arrival_tolerance"]
+            .as<float>(arm_pose_arrival_tolerance);
+        if (!std::isfinite(arm_pose_arrival_tolerance) ||
+            arm_pose_arrival_tolerance <= 0.0f) {
+            throw std::runtime_error(
+                "arm_pose arrival_tolerance must be positive and finite."
+            );
+        }
+
+        if (arm_pose_cfg["random_pose_file"]) {
+            std::filesystem::path random_pose_path =
+                arm_pose_cfg["random_pose_file"].as<std::string>();
+            if (random_pose_path.is_relative()) {
+                random_pose_path = policy_dir / random_pose_path;
+            }
+            const std::size_t first_pose_index =
+                arm_pose_cfg["random_pose_first_index"].as<std::size_t>(2);
+            random_arm_poses = load_arm_pose_library(
+                random_pose_path,
+                arm_command_joint_ids.size(),
+                first_pose_index
+            );
+            arm_pose_seed = arm_pose_cfg["random_seed"].as<unsigned int>(
+                arm_pose_seed
+            );
+            if (arm_pose_seed == 0U) {
+                std::random_device random_device;
+                arm_pose_rng.seed(random_device());
+            } else {
+                arm_pose_rng.seed(arm_pose_seed);
+            }
+            random_arm_pose_order.resize(random_arm_poses.size());
+            std::iota(
+                random_arm_pose_order.begin(),
+                random_arm_pose_order.end(),
+                std::size_t{0}
+            );
+            std::shuffle(
+                random_arm_pose_order.begin(),
+                random_arm_pose_order.end(),
+                arm_pose_rng
+            );
+            spdlog::info(
+                "Loaded {} evaluation arm poses from {}.",
+                random_arm_poses.size(),
+                random_pose_path.string()
+            );
+        }
         spdlog::info(
             "Navigation command-joint telemetry: {} arm joints.",
             arm_command_joint_ids.size()
@@ -458,6 +527,17 @@ void State_Navigation::enter()
     reset_navigation_state();
     open_pose_log();
     env->reset();
+    if (!arm_down_pose.empty()) {
+        env->set_command("arm_pose", arm_down_pose);
+        env->set_command("arm_pose_target", arm_down_pose);
+        arm_pose_after_down.clear();
+        arm_pose_after_down_name.clear();
+        arm_pose_after_down_pending = false;
+        arm_pose_after_down_is_random = false;
+        arm_requires_down_reset = false;
+        std::lock_guard<std::mutex> lock(arm_pose_request_mutex);
+        pending_arm_pose_request.clear();
+    }
 
     action_ready = false;
     policy_thread_running = true;
@@ -505,18 +585,13 @@ void State_Navigation::run()
             requested_pose = "up";
         } else if (joystick.LB.pressed && joystick.down.on_pressed) {
             requested_pose = "down";
+        } else if (joystick.LB.pressed && joystick.right.on_pressed) {
+            requested_pose = "random";
         }
 
         if (!requested_pose.empty()) {
-            const auto target = arm_pose_cfg["poses"][requested_pose]
-                .as<std::vector<float>>();
-            env->set_command("arm_pose_target", target);
-            spdlog::info(
-                "Navigation arm pose target: {} "
-                "(max joint speed: {:.2f} rad/s)",
-                requested_pose,
-                arm_pose_cfg["max_joint_speed"].as<float>(0.15f)
-            );
+            std::lock_guard<std::mutex> lock(arm_pose_request_mutex);
+            pending_arm_pose_request = requested_pose;
         }
     }
 
@@ -561,6 +636,144 @@ std::vector<float> State_Navigation::marker_observation() const
 std::vector<float> State_Navigation::future_path_observation() const
 {
     return std::vector<float>(future_path_poses.begin(), future_path_poses.end());
+}
+
+std::vector<float> State_Navigation::update_arm_pose_command(
+    isaaclab::ManagerBasedRLEnv* environment,
+    const std::string& command_name)
+{
+    const std::string target_name = command_name + "_target";
+    const auto command_cfg = environment->cfg["commands"][command_name];
+    auto command = environment->get_command(command_name);
+    auto target = environment->get_command(target_name);
+    if (command.empty()) {
+        command = arm_down_pose;
+        target = command;
+    }
+    if (target.empty()) {
+        target = command;
+    }
+    if (command.size() != arm_down_pose.size() || target.size() != command.size()) {
+        throw std::runtime_error(
+            "Arm pose command and target must match the configured pose dimension."
+        );
+    }
+
+    std::string request;
+    {
+        std::lock_guard<std::mutex> lock(arm_pose_request_mutex);
+        request.swap(pending_arm_pose_request);
+    }
+
+    const auto is_at_pose = [this](
+        const std::vector<float>& current,
+        const std::vector<float>& pose) {
+        return std::equal(
+            current.begin(), current.end(), pose.begin(),
+            [this](float lhs, float rhs) {
+                return std::abs(lhs - rhs) <= arm_pose_arrival_tolerance;
+            }
+        );
+    };
+    const auto stage_after_down = [this, &target](
+        const std::vector<float>& pose,
+        const std::string& name,
+        bool is_random) {
+        target = arm_down_pose;
+        arm_pose_after_down = pose;
+        arm_pose_after_down_name = name;
+        arm_pose_after_down_pending = true;
+        arm_pose_after_down_is_random = is_random;
+        spdlog::info(
+            "Navigation arm pose target: down, then {}.", name
+        );
+    };
+
+    if (request == "down") {
+        target = arm_down_pose;
+        arm_pose_after_down_pending = false;
+        arm_pose_after_down.clear();
+        arm_pose_after_down_name.clear();
+        spdlog::info("Navigation arm pose target: down.");
+    } else if (request == "up") {
+        if ((arm_requires_down_reset || arm_pose_after_down_pending) &&
+            !is_at_pose(command, arm_down_pose)) {
+            stage_after_down(arm_up_pose, "up", false);
+        } else {
+            target = arm_up_pose;
+            arm_pose_after_down_pending = false;
+            arm_requires_down_reset = false;
+            spdlog::info("Navigation arm pose target: up.");
+        }
+    } else if (request == "random") {
+        if (random_arm_poses.empty()) {
+            spdlog::warn(
+                "LB + Right ignored: no random Navigation arm poses are configured."
+            );
+        } else {
+            if (next_random_arm_pose >= random_arm_pose_order.size()) {
+                std::shuffle(
+                    random_arm_pose_order.begin(),
+                    random_arm_pose_order.end(),
+                    arm_pose_rng
+                );
+                next_random_arm_pose = 0;
+            }
+            const std::size_t pose_index =
+                random_arm_pose_order[next_random_arm_pose++];
+            const std::string pose_name =
+                "random[" + std::to_string(pose_index) + "]";
+            if (is_at_pose(command, arm_down_pose)) {
+                target = random_arm_poses[pose_index];
+                arm_pose_after_down_pending = false;
+                arm_requires_down_reset = true;
+                spdlog::info(
+                    "Navigation arm pose target: {}.", pose_name
+                );
+            } else {
+                stage_after_down(
+                    random_arm_poses[pose_index], pose_name, true
+                );
+            }
+        }
+    }
+
+    if (arm_pose_after_down_pending && is_at_pose(command, arm_down_pose)) {
+        target = arm_pose_after_down;
+        arm_requires_down_reset = arm_pose_after_down_is_random;
+        arm_pose_after_down_pending = false;
+        spdlog::info(
+            "Navigation arm pose target: {}.", arm_pose_after_down_name
+        );
+        arm_pose_after_down.clear();
+        arm_pose_after_down_name.clear();
+    }
+
+    const float max_joint_speed =
+        command_cfg["max_joint_speed"].as<float>(0.15f);
+    if (!std::isfinite(max_joint_speed) || max_joint_speed <= 0.0f) {
+        throw std::runtime_error("Arm pose max_joint_speed must be positive.");
+    }
+    const float max_step = max_joint_speed * environment->step_dt;
+    float largest_error = 0.0f;
+    for (std::size_t i = 0; i < command.size(); ++i) {
+        largest_error = std::max(largest_error, std::abs(target[i] - command[i]));
+    }
+    const float interpolation_fraction = largest_error > max_step
+        ? max_step / largest_error
+        : 1.0f;
+    for (std::size_t i = 0; i < command.size(); ++i) {
+        command[i] += interpolation_fraction * (target[i] - command[i]);
+    }
+    if (!arm_pose_after_down_pending &&
+        is_at_pose(command, arm_down_pose) &&
+        is_at_pose(target, arm_down_pose)) {
+        arm_requires_down_reset = false;
+    }
+
+    environment->set_command(target_name, target);
+    environment->set_command(command_name, command);
+    return command;
 }
 
 State_Navigation* State_Navigation::instance()

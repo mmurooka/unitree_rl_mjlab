@@ -3,11 +3,13 @@
 //license available in LICENSE file, or at http://www.opensource.org/licenses/mit-license.php
 
 #include"cnpy.h"
+#include<climits>
 #include<complex>
 #include<cstdlib>
 #include<algorithm>
 #include<cstring>
 #include<iomanip>
+#include<limits>
 #include<stdint.h>
 #include<stdexcept>
 #include <regex>
@@ -188,7 +190,107 @@ cnpy::NpyArray load_the_npy_file(FILE* fp) {
     return arr;
 }
 
-cnpy::NpyArray load_the_npz_array(FILE* fp, uint32_t compr_bytes, uint32_t uncompr_bytes) {
+namespace {
+
+struct ZipEntrySizes
+{
+    size_t compressed;
+    size_t uncompressed;
+};
+
+template<typename T>
+T read_little_endian(const char* data)
+{
+    T value;
+    std::memcpy(&value, data, sizeof(T));
+    return value;
+}
+
+ZipEntrySizes read_zip_entry_sizes(
+    const std::vector<char>& local_header,
+    const std::vector<char>& extra_field)
+{
+    const uint32_t compressed_32 = read_little_endian<uint32_t>(
+        local_header.data() + 18
+    );
+    const uint32_t uncompressed_32 = read_little_endian<uint32_t>(
+        local_header.data() + 22
+    );
+    uint64_t compressed = compressed_32;
+    uint64_t uncompressed = uncompressed_32;
+
+    if (compressed_32 == std::numeric_limits<uint32_t>::max() ||
+        uncompressed_32 == std::numeric_limits<uint32_t>::max()) {
+        bool found_zip64 = false;
+        size_t offset = 0;
+        while (offset + 4 <= extra_field.size()) {
+            const uint16_t header_id = read_little_endian<uint16_t>(
+                extra_field.data() + offset
+            );
+            const uint16_t data_size = read_little_endian<uint16_t>(
+                extra_field.data() + offset + 2
+            );
+            offset += 4;
+            if (offset + data_size > extra_field.size()) {
+                throw std::runtime_error("npz_load: malformed ZIP extra field");
+            }
+            if (header_id == 0x0001) {
+                found_zip64 = true;
+                size_t zip64_offset = offset;
+                const size_t zip64_end = offset + data_size;
+                const auto read_zip64_size = [&]() {
+                    if (zip64_offset + sizeof(uint64_t) > zip64_end) {
+                        throw std::runtime_error(
+                            "npz_load: malformed ZIP64 size field"
+                        );
+                    }
+                    const uint64_t value = read_little_endian<uint64_t>(
+                        extra_field.data() + zip64_offset
+                    );
+                    zip64_offset += sizeof(uint64_t);
+                    return value;
+                };
+                // ZIP64 stores only the overflowed fields, in this order.
+                if (uncompressed_32 == std::numeric_limits<uint32_t>::max()) {
+                    uncompressed = read_zip64_size();
+                }
+                if (compressed_32 == std::numeric_limits<uint32_t>::max()) {
+                    compressed = read_zip64_size();
+                }
+                break;
+            }
+            offset += data_size;
+        }
+        if (!found_zip64) {
+            throw std::runtime_error(
+                "npz_load: ZIP64 sizes are missing from the extra field"
+            );
+        }
+    }
+
+    if (compressed > std::numeric_limits<size_t>::max() ||
+        uncompressed > std::numeric_limits<size_t>::max()) {
+        throw std::runtime_error("npz_load: ZIP entry is too large");
+    }
+    return {
+        static_cast<size_t>(compressed),
+        static_cast<size_t>(uncompressed),
+    };
+}
+
+}  // namespace
+
+cnpy::NpyArray load_the_npz_array(
+    FILE* fp,
+    size_t compr_bytes,
+    size_t uncompr_bytes) {
+
+    if (compr_bytes > std::numeric_limits<uInt>::max() ||
+        uncompr_bytes > std::numeric_limits<uInt>::max()) {
+        throw std::runtime_error(
+            "load_the_npz_array: ZIP entry exceeds the zlib size limit"
+        );
+    }
 
     std::vector<unsigned char> buffer_compr(compr_bytes);
     std::vector<unsigned char> buffer_uncompr(uncompr_bytes);
@@ -206,9 +308,9 @@ cnpy::NpyArray load_the_npz_array(FILE* fp, uint32_t compr_bytes, uint32_t uncom
     d_stream.next_in = Z_NULL;
     err = inflateInit2(&d_stream, -MAX_WBITS);
 
-    d_stream.avail_in = compr_bytes;
+    d_stream.avail_in = static_cast<uInt>(compr_bytes);
     d_stream.next_in = &buffer_compr[0];
-    d_stream.avail_out = uncompr_bytes;
+    d_stream.avail_out = static_cast<uInt>(uncompr_bytes);
     d_stream.next_out = &buffer_uncompr[0];
 
     err = inflate(&d_stream, Z_FINISH);
@@ -257,19 +359,24 @@ cnpy::npz_t cnpy::npz_load(std::string fname) {
 
         //read in the extra field
         uint16_t extra_field_len = *(uint16_t*) &local_header[28];
+        std::vector<char> extra_field(extra_field_len);
         if(extra_field_len > 0) {
-            std::vector<char> buff(extra_field_len);
-            size_t efield_res = fread(&buff[0],sizeof(char),extra_field_len,fp);
+            size_t efield_res = fread(
+                extra_field.data(), sizeof(char), extra_field_len, fp
+            );
             if(efield_res != extra_field_len)
                 throw std::runtime_error("npz_load: failed fread");
         }
 
         uint16_t compr_method = *reinterpret_cast<uint16_t*>(&local_header[0]+8);
-        uint32_t compr_bytes = *reinterpret_cast<uint32_t*>(&local_header[0]+18);
-        uint32_t uncompr_bytes = *reinterpret_cast<uint32_t*>(&local_header[0]+22);
+        const auto sizes = read_zip_entry_sizes(local_header, extra_field);
 
         if(compr_method == 0) {arrays[varname] = load_the_npy_file(fp);}
-        else {arrays[varname] = load_the_npz_array(fp,compr_bytes,uncompr_bytes);}
+        else {
+            arrays[varname] = load_the_npz_array(
+                fp, sizes.compressed, sizes.uncompressed
+            );
+        }
     }
 
     fclose(fp);
@@ -300,21 +407,32 @@ cnpy::NpyArray cnpy::npz_load(std::string fname, std::string varname) {
 
         //read in the extra field
         uint16_t extra_field_len = *(uint16_t*) &local_header[28];
-        fseek(fp,extra_field_len,SEEK_CUR); //skip past the extra field
+        std::vector<char> extra_field(extra_field_len);
+        if (extra_field_len > 0) {
+            const size_t extra_field_res = fread(
+                extra_field.data(), sizeof(char), extra_field_len, fp
+            );
+            if (extra_field_res != extra_field_len) {
+                throw std::runtime_error("npz_load: failed fread");
+            }
+        }
         
         uint16_t compr_method = *reinterpret_cast<uint16_t*>(&local_header[0]+8);
-        uint32_t compr_bytes = *reinterpret_cast<uint32_t*>(&local_header[0]+18);
-        uint32_t uncompr_bytes = *reinterpret_cast<uint32_t*>(&local_header[0]+22);
+        const auto sizes = read_zip_entry_sizes(local_header, extra_field);
 
         if(vname == varname) {
-            NpyArray array  = (compr_method == 0) ? load_the_npy_file(fp) : load_the_npz_array(fp,compr_bytes,uncompr_bytes);
+            NpyArray array = (compr_method == 0)
+                ? load_the_npy_file(fp)
+                : load_the_npz_array(fp, sizes.compressed, sizes.uncompressed);
             fclose(fp);
             return array;
         }
         else {
             //skip past the data
-            uint32_t size = *(uint32_t*) &local_header[22];
-            fseek(fp,size,SEEK_CUR);
+            if (sizes.compressed > static_cast<size_t>(LONG_MAX) ||
+                fseek(fp, static_cast<long>(sizes.compressed), SEEK_CUR) != 0) {
+                throw std::runtime_error("npz_load: failed to skip ZIP entry");
+            }
         }
     }
 
@@ -335,6 +453,4 @@ cnpy::NpyArray cnpy::npy_load(std::string fname) {
     fclose(fp);
     return arr;
 }
-
-
 

@@ -92,13 +92,17 @@ tmp/bin/python scripts/generate_g1_arm_carry_poses.py \
   --num-raised-poses 32 --seed 42
 ```
 
-左右の腕をほぼ対称にサンプリングし、次をすべて満たす候補だけを
+既定ではランダム姿勢の半数を左右ほぼ対称、半数を左右非対称として生成し、
+次をすべて満たす候補だけを
 `src/assets/motions/g1/arm_vel/carry_poses.npz`に保存します。
 
+- 非対称姿勢は、右腕を鏡映して比較した左右関節角のRMS差が0.12 rad以上
 - G1の各関節制限から既定で0.08 rad以上内側
-- 左右の手首が体の前方で荷物を支えられる幅・高さ
-- 元の腕上げ姿勢からの補間途中を含め、MuJoCo上で自己接触なし
+- 左右の掌siteが体の前方で荷物を支えられる幅・高さ
+- 腕下げ姿勢からの補間途中を含め、MuJoCo上で自己接触なし
 - 他の採用姿勢との関節空間RMS距離が既定で0.10 rad以上
+
+非対称姿勢の割合は`--asymmetric-pose-fraction`で変更できます。
 
 姿勢一覧はGUIなしでも確認できます。
 
@@ -111,7 +115,8 @@ MuJoCo viewerでは全姿勢が2秒ごとに切り替わります。特定の姿
 
 ```bash
 tmp/bin/python scripts/view_g1_arm_pose_library.py
-tmp/bin/python scripts/view_g1_arm_pose_library.py --pose-index 5
+# seed 42の既定ライブラリでは、index 4が最初の非対称姿勢
+tmp/bin/python scripts/view_g1_arm_pose_library.py --pose-index 4
 ```
 
 ## 実行
@@ -146,6 +151,8 @@ cp logs/rsl_rl/g1_navigation/<run>/policy.onnx deploy/robots/g1/config/policy/na
 Navigationへ入るたびにランダム経路を1本生成し、その終端をゴールとして保持します。
 実軌跡は `navigation_pose.csv`、全目標経路は `navigation_target_path.csv` に出力され、
 `scripts/plot_deploy_navigation.py`で重ねて確認できます。
+同じスクリプトで腕14関節の目標角とencoder実測角を重ねたウィンドウも開き、
+各関節の最新誤差、全腕のRMS誤差、最大絶対誤差を確認できます。
 
 主要な調整箇所は `TrajectoryCommandCfg` の次の値です。
 

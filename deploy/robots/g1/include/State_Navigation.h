@@ -37,6 +37,9 @@ public:
     std::vector<float> command_observation() const;
     std::vector<float> marker_observation() const;
     std::vector<float> future_path_observation() const;
+    std::vector<float> update_arm_pose_command(
+        isaaclab::ManagerBasedRLEnv* environment,
+        const std::string& command_name);
 
     static State_Navigation* instance();
 
@@ -120,6 +123,21 @@ private:
     std::vector<float> latest_processed_action_joints;
     std::vector<float> last_sent_action_joints;
     std::vector<int> arm_command_joint_ids;
+    std::vector<float> arm_down_pose;
+    std::vector<float> arm_up_pose;
+    std::vector<std::vector<float>> random_arm_poses;
+    std::vector<std::size_t> random_arm_pose_order;
+    std::vector<float> arm_pose_after_down;
+    std::string arm_pose_after_down_name;
+    std::string pending_arm_pose_request;
+    std::mutex arm_pose_request_mutex;
+    std::mt19937 arm_pose_rng;
+    std::size_t next_random_arm_pose{0};
+    unsigned int arm_pose_seed{0U};
+    float arm_pose_arrival_tolerance{1.0e-3f};
+    bool arm_pose_after_down_pending{false};
+    bool arm_pose_after_down_is_random{false};
+    bool arm_requires_down_reset{false};
 
     Eigen::Vector2f estimated_position{Eigen::Vector2f::Zero()};
     Eigen::Vector2f initial_odometry_position{Eigen::Vector2f::Zero()};

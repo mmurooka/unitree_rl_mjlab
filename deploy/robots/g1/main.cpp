@@ -82,7 +82,8 @@ int main(int argc, char** argv)
     std::cout << "And then press [R2 + A] to start controlling the robot.\n";
     std::cout << "Press [R2 + B] to follow a newly generated Navigation path.\n";
     std::cout << "Press [R2 + A] to return from Navigation to Velocity.\n";
-    std::cout << "In arm-enabled Navigation, press [L1 + Up/Down] to raise/lower the arms.\n";
+    std::cout << "In arm-enabled Navigation, press [L1 + Up/Down] for the basic raised/lowered arms.\n";
+    std::cout << "Press [L1 + Right] for a random evaluated carrying pose.\n";
     std::cout << "And then press [R1 + A/B/Y/X] to control the robot dance.\n";
 
     while (true)
