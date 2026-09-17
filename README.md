@@ -143,9 +143,18 @@ python scripts/play.py Unitree-G1-Flat --checkpoint_file=logs/rsl_rl/g1_velocity
 ```
 
 Motion imitation:
+
 ```bash
-python scripts/play.py Unitree-G1-Tracking-No-State-Estimation --motion_file=src/assets/motions/g1/dance1_subject2.npz --checkpoint_file=logs/rsl_rl/g1_tracking/2026-xx-xx_xx-xx-xx/model_xx.pt
+python scripts/play.py Unitree-G1-Tracking-No-State-Estimation \
+  --motion-file src/assets/motions/g1/lift_walk_put.npz \
+  --checkpoint-file logs/rsl_rl/g1_tracking/2026-09-16_23-43-59/model_16000.pt \
+  --num-envs 1 --viewer native
 ```
+
+This example uses the `lift_walk_put` motion and the selected training run's
+checkpoint. `--motion-file` expects a converted policy-input NPZ, not the raw
+MotionPrompt NPZ. Use `--device cpu` when CUDA is unavailable, or `--viewer viser`
+for browser-based visualization on a machine without a desktop display.
 
 **Note**：
 
