@@ -3,7 +3,7 @@
 
 ## ✳️ Overview
 Unitree RL Mjlab is a reinforcement learning project built upon the
-[mjlab](https://github.com/mujocolab/mjlab.git), using MuJoCo as its 
+[mjlab](https://github.com/mujocolab/mjlab.git), using MuJoCo as its
 physics simulation backend, currently supporting Unitree Go2, A2, As2, G1, R1, H1_2 and H2.
 
 Mjlab combines [Isaac Lab](https://github.com/isaac-sim/IsaacLab)'s proven API
@@ -243,12 +243,13 @@ mkdir build && cd build
 cmake .. && make -j8
 ```
 
-Build the G1 controller for sim2sim without a ROS 2 runtime dependency:
+Build the G1 controller in `build` (shared by simulation and real-robot use):
 
 ```bash
-cmake -S deploy/robots/g1 -B deploy/robots/g1/build_sim \
-  -DG1_NAVIGATION_WITH_ROS2=OFF
-cmake --build deploy/robots/g1/build_sim -j8
+source /opt/ros/humble/setup.bash
+cmake -S deploy/robots/g1 -B deploy/robots/g1/build \
+  -DG1_NAVIGATION_WITH_ROS2=ON
+cmake --build deploy/robots/g1/build -j8
 ```
 
 Launch the simulator (note that a gamepad must be connected):
@@ -266,9 +267,11 @@ cd deploy/robots/g1/build
 ./g1_ctrl --network=lo
 ```
 
-For the ROS-free build above, run
-`deploy/robots/g1/build_sim/g1_ctrl --network=lo`. It uses simulator truth
-localization and does not require sourcing a ROS 2 setup file.
+ROS 2 is required when Navigation consumes GLIM odometry, including in
+simulation. If Navigation only uses simulator truth localization, you can
+configure the same `build` directory with `-DG1_NAVIGATION_WITH_ROS2=OFF` and
+rebuild to remove the controller's ROS 2 runtime dependency. RViz still requires
+ROS independently of this controller option.
 
 Install a newly trained 120-input trajectory policy before testing deploy:
 
@@ -335,7 +338,7 @@ python3 scripts/plot_deploy_navigation.py --joints 15 18 22 25
 
 The title reports whether the data source is `simulator` or `glim`; missing or
 stale localization is shown explicitly. This file-based interface is identical
-for the ROS-free sim2sim build and ROS-enabled real-robot build, and keeps GUI
+for both simulator and GLIM localization, and keeps GUI
 work outside the control process.
 
 The log paths, enable flag, and flush interval can be changed with
@@ -357,7 +360,7 @@ Source the matching ROS 2 environment before configuring, building, and
 running it, for example `source /opt/ros/jazzy/setup.bash`.
 
 **Arguments**：
-- `network`: The network interface used to connect to the robot. Use `lo` for simulation deployment, and `enp5s0` for the real robot(You can check it using the `ifconfig` command) 
+- `network`: The network interface used to connect to the robot. Use `lo` for simulation deployment, and `enp5s0` for the real robot(You can check it using the `ifconfig` command)
 
 </div>
 

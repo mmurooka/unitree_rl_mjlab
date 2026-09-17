@@ -20,9 +20,11 @@ cmake --build deploy/robots/g1/build -j2
 ```
 
 Set `FSM.OnlineMimic.policy_dir` in `deploy/robots/g1/config/config.yaml` to the
-tracking policy you already use offline. The example inherits the existing
-`Mimic_walk` path `config/policy/mimic/walk_1000/`; provide that policy or change
-the path if it is absent. The policy stays fixed across requests. The initial
+tracking policy you already use offline. The directory must contain
+`params/deploy.yaml` and `exported/policy.onnx`. The current configuration uses
+`config/policy/mimic/lift_walk_put/`, resolved relative to `deploy/robots/g1`.
+This directory contains copies of the deployment files from training run
+`2026-09-16_23-43-59` and does not depend on the training logs. The policy stays fixed across requests. The initial
 implementation checks 29 joints in the current converter's motor order and a
 20 ms policy period. It does not adapt models to new motions.
 
@@ -129,11 +131,13 @@ python -m unittest discover -s tests -p test_motion_service.py
 cmake -S deploy/robots/g1 -B deploy/robots/g1/build \
   -DG1_NAVIGATION_WITH_ROS2=OFF -DG1_BUILD_ONLINE_TESTS=ON
 cmake --build deploy/robots/g1/build -j2
-deploy/robots/g1/build/test_online_motion "$PWD/deploy/robots/g1" /tmp/short_policy_input.npz
+deploy/robots/g1/build/test_online_motion "$PWD/deploy/robots/g1" \
+  /tmp/short_policy_input.npz config/policy/mimic/lift_walk_put
 ```
 
-The C++ smoke test uses the bundled dance policy only to exercise inference and
-the online state machine with a frozen synthetic robot state. Supply a short
-converted NPZ (e.g. 10 frames). It uses DDS domain 232 on loopback, a test-only
+The C++ smoke test accepts an optional policy directory as its third argument
+(the example selects `lift_walk_put`; omitting it uses the bundled dance policy).
+It exercises inference and the online state machine with a frozen synthetic
+robot state. Supply a short converted NPZ (e.g. 10 frames). It uses DDS domain 232 on loopback, a test-only
 LowState topic, and never constructs a motor-command publisher. It is not a
-test of physical tracking performance or of your selected deployment policy.
+test of physical tracking performance.

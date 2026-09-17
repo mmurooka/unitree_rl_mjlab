@@ -21,7 +21,7 @@ FSM:
 
 
   Passive:
-    transitions: 
+    transitions:
       FixStand: LT + up.on_pressed
     mode: [
       1,1,1,1,1,1,
@@ -34,13 +34,13 @@ FSM:
       3,3,3,3,3,3,
       3,3,3,3,3,3,
       3,3,3,
-      3,3,3,3,3,3,3,  
-      3,3,3,3,3,3,3,  
+      3,3,3,3,3,3,3,
+      3,3,3,3,3,3,3,
     ]
 
 
   FixStand:
-    transitions: 
+    transitions:
       Passive: LT + B.on_pressed
       Velocity: RT + A.on_pressed
       Navigation: RT + !LT + B.on_pressed
@@ -72,7 +72,7 @@ FSM:
 
 
   Velocity:
-    transitions: 
+    transitions:
       Passive: LT + B.on_pressed
       Mimic_walk: RB + A.on_pressed
       Navigation: RT + !LT + B.on_pressed
@@ -106,6 +106,6 @@ FSM:
       Passive: LT + B.on_pressed
       Velocity: RT + A.on_pressed
 
-    policy_dir: config/policy/mimic/walk_1000/
+    policy_dir: config/policy/mimic/lift_walk_put/
     endpoint: ipc:///tmp/task_prompt_rl_deploy.sock
     start_joint_threshold_degrees: 30.0

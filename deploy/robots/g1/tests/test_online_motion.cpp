@@ -1,6 +1,6 @@
 // Isolated DDS domain/topic; no LowCmd publisher. Exercises the real policies
 // and Velocity transition predicate, driving FSM lifecycle hooks explicitly.
-// Usage: test_online_motion <G1 project directory> <short converted NPZ>
+// Usage: test_online_motion <G1 project directory> <short converted NPZ> [policy directory]
 #include "State_OnlineMimic.h"
 #include <chrono>
 #include <iostream>
@@ -16,7 +16,7 @@ void check(bool condition, const std::string& message)
 
 int main(int argc, char** argv)
 {
-    if (argc != 3) return 2;
+    if (argc != 3 && argc != 4) return 2;
     using Clock = std::chrono::steady_clock;
     unitree::robot::ChannelFactory::Instance()->Init(232, "lo");
     FSMState::lowstate = std::make_shared<LowState_t>("rt/test_online_lowstate");
@@ -34,7 +34,7 @@ int main(int argc, char** argv)
     param::proj_dir = argv[1];
     const std::string endpoint = "ipc:///tmp/tprl-online-smoke-" + std::to_string(getpid()) + ".sock";
     auto cfg = param::config["FSM"]["OnlineMimic"];
-    cfg["policy_dir"] = "config/policy/mimic/dance1_subject2";
+    cfg["policy_dir"] = argc == 4 ? argv[3] : "config/policy/mimic/dance1_subject2";
     cfg["endpoint"] = endpoint;
     cfg["start_joint_threshold_degrees"] = 30;
     param::config["FSM"]["Velocity"]["policy_dir"] = "config/policy/velocity/v0";

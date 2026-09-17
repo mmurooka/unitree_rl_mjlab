@@ -68,8 +68,7 @@ inline void load_config_file()
     if (std::filesystem::exists(local_config)) {
         proj_dir = executable_dir;
     } else if (std::filesystem::exists(parent_config)) {
-        // Supports build, build_sim, build_debug, and similarly named build
-        // directories without coupling configuration discovery to the name.
+        // Discover configuration independently of the build directory name.
         proj_dir = executable_dir.parent_path();
     } else {
         spdlog::critical(
@@ -125,7 +124,7 @@ inline std::filesystem::path parser_policy_dir(std::filesystem::path policy_dir)
 namespace po = boost::program_options;
 
 //※ This function must be called at the beginning of main() function
-inline po::variables_map helper(int argc, char** argv) 
+inline po::variables_map helper(int argc, char** argv)
 {
     bin_path = get_bin_path();
     load_config_file();
