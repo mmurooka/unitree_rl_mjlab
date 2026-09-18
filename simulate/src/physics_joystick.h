@@ -28,9 +28,11 @@ public:
         LB(js_->button_[4]);
         RB(js_->button_[5]);
         A(js_->button_[0]);
-        B(js_->button_[1]); 
+        B(js_->button_[1]);
         X(js_->button_[2]);
         Y(js_->button_[3]);
+        F1(js_->button_[9]);
+        F2(js_->button_[10]);
         up(js_->axis_[7] < 0);
         down(js_->axis_[7] > 0);
         left(js_->axis_[6] < 0);
@@ -70,7 +72,7 @@ public:
         LB(js_->button_[6]);
         RB(js_->button_[7]);
         A(js_->button_[0]);
-        B(js_->button_[1]); 
+        B(js_->button_[1]);
         X(js_->button_[3]);
         Y(js_->button_[4]);
         up(js_->axis_[7] < 0);
