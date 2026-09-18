@@ -34,6 +34,10 @@
 #include "array_safety.h"
 #include "unitree_sdk2_bridge.h"
 #include "param.h"
+#ifdef UNITREE_MJLAB_HAS_ROS2
+#include "d435_simulator.h"
+#include "mid360_simulator.h"
+#endif
 
 #define MUJOCO_PLUGIN_DIR "mujoco_plugin"
 #define NUM_MOTOR_IDL_GO 20
@@ -99,6 +103,44 @@ namespace
   // model and data
   mjModel *m = nullptr;
   mjData *d = nullptr;
+#ifdef UNITREE_MJLAB_HAS_ROS2
+  std::unique_ptr<Mid360Simulator> mid360;
+  std::unique_ptr<D435Simulator> d435;
+  std::mutex ros_sensor_mutex;
+#endif
+
+  void InitializeRosSensors()
+  {
+#ifdef UNITREE_MJLAB_HAS_ROS2
+    std::lock_guard<std::mutex> lock(ros_sensor_mutex);
+    d435.reset();
+    mid360.reset();
+    if (m && param::config.enable_mid360)
+    {
+      mid360 = std::make_unique<Mid360Simulator>(m, param::config.mid360_scan_pattern.c_str());
+    }
+    if (m && param::config.enable_d435)
+    {
+      d435 = std::make_unique<D435Simulator>(m);
+    }
+#else
+    if (param::config.enable_mid360)
+    {
+      std::cerr << "MID-360 requested, but this executable was built without ROS 2 support\n";
+    }
+#endif
+  }
+
+  void StepSimulation()
+  {
+    mj_step(m, d);
+#ifdef UNITREE_MJLAB_HAS_ROS2
+    if (mid360)
+    {
+      mid360->advance(m, d);
+    }
+#endif
+  }
 
   // control noise variables
   mjtNum *ctrlnoise = nullptr;
@@ -356,6 +398,7 @@ namespace
           m = mnew;
           d = dnew;
           mj_forward(m, d);
+          InitializeRosSensors();
 
           // allocate ctrlnoise
           free(ctrlnoise);
@@ -386,6 +429,7 @@ namespace
           m = mnew;
           d = dnew;
           mj_forward(m, d);
+          InitializeRosSensors();
 
           // allocate ctrlnoise
           free(ctrlnoise);
@@ -462,7 +506,7 @@ namespace
               sim.speed_changed = false;
 
               // run single step, let next iteration deal with timing
-              mj_step(m, d);
+              StepSimulation();
               stepped = true;
             }
 
@@ -503,7 +547,7 @@ namespace
                 }
 
                 // call mj_step
-                mj_step(m, d);
+                StepSimulation();
                 stepped = true;
 
                 // break if reset
@@ -549,6 +593,7 @@ void PhysicsThread(mj::Simulate *sim, const char *filename)
     {
       sim->Load(m, d, filename);
       mj_forward(m, d);
+      InitializeRosSensors();
 
       // allocate ctrlnoise
       free(ctrlnoise);
@@ -564,6 +609,13 @@ void PhysicsThread(mj::Simulate *sim, const char *filename)
   PhysicsLoop(*sim);
 
   // delete everything we allocated
+#ifdef UNITREE_MJLAB_HAS_ROS2
+  {
+    std::lock_guard<std::mutex> lock(ros_sensor_mutex);
+    d435.reset();
+    mid360.reset();
+  }
+#endif
   free(ctrlnoise);
   mj_deleteData(d);
   mj_deleteModel(m);
@@ -592,7 +644,7 @@ void *UnitreeSdk2BridgeThread(void *arg)
     body_id = mj_name2id(m, mjOBJ_BODY, "base_link");
   }
   param::config.band_attached_link = 6 * body_id;
-  
+
   std::unique_ptr<UnitreeSDK2BridgeBase> interface = nullptr;
   if (m->nu > NUM_MOTOR_IDL_GO) {
     interface = std::make_unique<G1Bridge>(m, d);
@@ -600,7 +652,7 @@ void *UnitreeSdk2BridgeThread(void *arg)
     interface = std::make_unique<Go2Bridge>(m, d);
   }
   interface->start();
-  
+
   while (true)
   {
     sleep(1);
@@ -677,11 +729,23 @@ int main(int argc, char **argv)
   if(param::config.robot_scene.is_relative()) {
     param::config.robot_scene = proj_dir.parent_path() / param::config.robot_scene;
   }
+  if(param::config.mid360_scan_pattern.is_relative()) {
+    param::config.mid360_scan_pattern = proj_dir / param::config.mid360_scan_pattern;
+  }
 
   // simulate object encapsulates the UI
   auto sim = std::make_unique<mj::Simulate>(
     std::make_unique<mj::GlfwAdapter>(),
     &cam, &opt, &pert, /* is_passive = */ false);
+#ifdef UNITREE_MJLAB_HAS_ROS2
+  sim->render_callback = [](const mjModel *model, mjData *data, mjrContext *context) {
+    std::lock_guard<std::mutex> lock(ros_sensor_mutex);
+    if (d435 && model && data)
+    {
+      d435->render(model, data, context);
+    }
+  };
+#endif
 
   std::thread unitree_thread(UnitreeSdk2BridgeThread, nullptr);
 

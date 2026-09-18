@@ -13,6 +13,11 @@ list(APPEND CMAKE_PREFIX_PATH "/opt/unitree_robotics/lib/cmake")
 find_package(unitree_sdk2 REQUIRED)
 find_package(Boost REQUIRED COMPONENTS program_options)
 
+find_package(rclcpp QUIET)
+find_package(sensor_msgs QUIET)
+find_package(geometry_msgs QUIET)
+find_package(tf2_ros QUIET)
+
 
 include_directories(
   mujoco/include
@@ -42,5 +47,14 @@ link_libraries(
 )
 
 add_executable(unitree_mujoco ${SIM_SRC} src/main.cc)
+
+if(rclcpp_FOUND AND sensor_msgs_FOUND AND geometry_msgs_FOUND AND tf2_ros_FOUND)
+  target_sources(unitree_mujoco PRIVATE src/mid360_simulator.cc src/d435_simulator.cc)
+  target_compile_definitions(unitree_mujoco PRIVATE UNITREE_MJLAB_HAS_ROS2)
+  target_link_libraries(unitree_mujoco rclcpp::rclcpp ${sensor_msgs_TARGETS} ${geometry_msgs_TARGETS} tf2_ros::tf2_ros)
+  message(STATUS "MID-360 and D435 ROS 2 simulation enabled")
+else()
+  message(WARNING "ROS 2 camera dependencies not found; ROS 2 sensor simulation disabled")
+endif()
 
 add_executable(jstest src/joystick/jstest.cc src/joystick/joystick.cc)

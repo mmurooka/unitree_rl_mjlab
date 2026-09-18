@@ -2596,6 +2596,10 @@ void Simulate::Render() {
     pending_.ui_update_equality = false;
   }
 
+  if (this->render_callback) {
+    this->render_callback(this->m_, this->d_, &this->platform_ui->mjr_context());
+  }
+
   // render scene
   mjr_render(rect, &this->scn, &this->platform_ui->mjr_context());
 

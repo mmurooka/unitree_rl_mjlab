@@ -18,6 +18,7 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -81,6 +82,9 @@ class Simulate {
 
   // render the ui to the window
   void Render();
+
+  // Runs on the render thread while the OpenGL context is current.
+  std::function<void(const mjModel*, mjData*, mjrContext*)> render_callback;
 
   // loop to render the UI (must be called from main thread because of MacOS)
   void RenderLoop();
