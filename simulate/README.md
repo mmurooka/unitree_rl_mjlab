@@ -17,6 +17,13 @@ cmake --build build -j
 ```
 
 Runtime settings, including sensor rates and topic names, are in `config.yaml`.
+Override these settings with `--disable-lidar` to disable MID-360 lidar and IMU,
+or `--disable-camera` to disable D435 images and point clouds. Use both to
+disable both sensor simulations:
+
+```bash
+./build/unitree_mujoco --disable-lidar --disable-camera
+```
 
 ## ROS 2 interfaces
 

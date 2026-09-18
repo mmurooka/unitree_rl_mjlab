@@ -108,6 +108,8 @@ inline po::variables_map helper(int argc, char** argv)
     po::options_description desc("Unitree Mujoco");
     desc.add_options()
         ("help,h", "Show help message")
+        ("disable-lidar", "Disable MID-360 lidar and IMU simulation")
+        ("disable-camera", "Disable D435 camera simulation")
         ("domain_id,i", po::value<int>(&config.domain_id), "DDS domain ID; -i 0")
         ("network,n", po::value<std::string>(&config.interface), "DDS network interface; -n eth0")
         ("robot,r", po::value<std::string>(&config.robot), "Robot type; -r go2")
@@ -117,6 +119,15 @@ inline po::variables_map helper(int argc, char** argv)
     po::variables_map vm;
     po::store(po::parse_command_line(argc, argv, desc), vm);
     po::notify(vm);
+
+    if (vm.count("disable-lidar"))
+    {
+        config.enable_mid360 = false;
+    }
+    if (vm.count("disable-camera"))
+    {
+        config.enable_d435 = false;
+    }
 
     if (vm.count("help"))
     {
