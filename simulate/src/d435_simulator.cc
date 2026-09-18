@@ -110,7 +110,8 @@ public:
     if (!rclcpp::ok())
     {
       int argc = 0;
-      rclcpp::init(argc, nullptr);
+      // Keep SIGINT/SIGTERM owned by the simulator, not the ROS-only shutdown handler.
+      rclcpp::init(argc, nullptr, rclcpp::InitOptions(), rclcpp::SignalHandlerOptions::None);
       owns_ros_context_ = true;
     }
     node_ = std::make_shared<rclcpp::Node>("unitree_mujoco_d435");
