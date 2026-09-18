@@ -1,0 +1,28 @@
+<mujoco model="scene_g1_table_box">
+  <!-- Reuse the flat scene, including the robot, sensors, and floor. -->
+  <include file="scene_g1.xml"/>
+  <worldbody>
+    <!-- Tabletop: 0.40 x 0.55 x 0.025 m; top surface z = 0.5732 m. -->
+    <body name="pickup_table" pos="0.30 0 0">
+      <geom name="pickup_table_top" type="box" pos="0 0 0.5607" size="0.20 0.275 0.0125" rgba="0.65 0.45 0.25 1" friction="0.8 0.005 0.0001"/>
+      <geom name="pickup_table_leg_1" type="cylinder" pos="-0.16 -0.235 0.2741" size="0.02 0.2741" rgba="0.35 0.35 0.38 1"/>
+      <geom name="pickup_table_leg_2" type="cylinder" pos="-0.16 0.235 0.2741" size="0.02 0.2741" rgba="0.35 0.35 0.38 1"/>
+      <geom name="pickup_table_leg_3" type="cylinder" pos="0.16 -0.235 0.2741" size="0.02 0.2741" rgba="0.35 0.35 0.38 1"/>
+      <geom name="pickup_table_leg_4" type="cylinder" pos="0.16 0.235 0.2741" size="0.02 0.2741" rgba="0.35 0.35 0.38 1"/>
+    </body>
+    <body name="place_table" pos="0.30 0.7 0">
+      <geom name="place_table_top" type="box" pos="0 0 0.5607" size="0.20 0.275 0.0125" rgba="0.65 0.45 0.25 1" friction="0.8 0.005 0.0001"/>
+      <geom name="place_table_leg_1" type="cylinder" pos="-0.16 -0.235 0.2741" size="0.02 0.2741" rgba="0.35 0.35 0.38 1"/>
+      <geom name="place_table_leg_2" type="cylinder" pos="-0.16 0.235 0.2741" size="0.02 0.2741" rgba="0.35 0.35 0.38 1"/>
+      <geom name="place_table_leg_3" type="cylinder" pos="0.16 -0.235 0.2741" size="0.02 0.2741" rgba="0.35 0.35 0.38 1"/>
+      <geom name="place_table_leg_4" type="cylinder" pos="0.16 0.235 0.2741" size="0.02 0.2741" rgba="0.35 0.35 0.38 1"/>
+    </body>
+    <!-- Full box dimensions: 0.25 x 0.35 x 0.20 m; mass: 0.5 kg. -->
+    <!-- Width matches TaskPromptRL grip_width; other dimensions/mass are provisional. -->
+    <!-- Position matches nominal torso + pickup_center_in_torso, with 2 mm clearance. -->
+    <body name="carry_box" pos="0.2460365 0 0.6752">
+      <freejoint name="carry_box_free_joint"/>
+      <geom name="carry_box_geom" type="box" size="0.125 0.175 0.10" mass="0.5" friction="1.0 0.005 0.0001" condim="4" rgba="0.8 0.55 0.2 1"/>
+    </body>
+  </worldbody>
+</mujoco>

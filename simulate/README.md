@@ -25,6 +25,39 @@ disable both sensor simulations:
 ./build/unitree_mujoco --disable-lidar --disable-camera
 ```
 
+## Table and box scene
+
+Select `src/assets/robots/unitree_g1/xmls/scene_g1_table_box.xml` in
+`config.yaml` (`robot_scene`), or run:
+
+```bash
+./build/unitree_mujoco \
+  --scene src/assets/robots/unitree_g1/xmls/scene_g1_table_box.xml
+```
+
+Set `robot_scene` back to `src/assets/robots/unitree_g1/xmls/scene_g1.xml`
+for the flat environment. The table scene includes that same flat scene, so
+robot and sensor definitions remain shared.
+
+Each fixed table has a 0.40 × 0.55 m tabletop, 25 mm thick, supported by four
+cylindrical legs of radius 20 mm. The top surface is 0.5732 m above the floor.
+The pickup and destination table centers are `(0.30, 0, 0)` and `(0.30, 0.70, 0)`.
+The destination is lateral to keep the pickup table out of a straight forward
+walking path; this layout needs a lateral motion, not the forward quickstart motion.
+
+The box is a free body with contact only (no attachment or scripted motion).
+Its full dimensions are 0.25 × 0.35 × 0.20 m (x/y/z), with mass 0.5 kg.
+The width matches `task_prompt.box.grip_width` in TaskPromptRL's default
+`config/g1_reference_motion.yaml`; depth, height, mass, and friction are provisional.
+Its initial center is `(0.2460365, 0, 0.6752)`, derived from the nominal robot
+pose and `pickup_center_in_torso`, plus 2 mm clearance above the table.
+Positions and geometry dimensions can be edited directly in the scene XML;
+MuJoCo box `size` values are half dimensions.
+
+This defines the physical environment; successful lifting and transport with
+the current policy have not been validated. Matching grip width alone does
+not guarantee sufficient hand contact or grip force.
+
 ## ROS 2 interfaces
 
 The MID-360 simulation publishes:

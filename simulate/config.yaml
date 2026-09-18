@@ -1,5 +1,6 @@
 robot: "g1"
-robot_scene: "src/assets/robots/unitree_g1/xmls/scene_g1.xml"
+#robot_scene: "src/assets/robots/unitree_g1/xmls/scene_g1.xml"
+robot_scene: "src/assets/robots/unitree_g1/xmls/scene_g1_table_box.xml"
 #robot_scene: "src/assets/robots/unitree_g1/xmls/scene_g1_29dof_with_hand.xml"
 #robot: "g1_23dof"
 #robot_scene: "src/assets/robots/unitree_g1/xmls/scene_g1_23dof.xml"
