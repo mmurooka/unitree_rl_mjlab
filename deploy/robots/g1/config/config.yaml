@@ -7,14 +7,12 @@ FSM:
     Velocity:
       id: 3
       type: RLBase
-    Navigation:
-      id: 4
-      type: Navigation
-
-    Mimic_walk:
-      id: 5
-      type: Mimic
-
+    # Navigation:
+    #   id: 4
+    #   type: Navigation
+    # Mimic_walk:
+    #   id: 5
+    #   type: Mimic
     OnlineMimic:
       id: 6
       type: OnlineMimic
@@ -43,7 +41,7 @@ FSM:
     transitions:
       Passive: LT + B.on_pressed
       Velocity: RT + A.on_pressed
-      Navigation: RT + !LT + B.on_pressed
+      # Navigation: RT + !LT + B.on_pressed
 
     kp: [
       100,100,100,150,40,40,
@@ -74,31 +72,31 @@ FSM:
   Velocity:
     transitions:
       Passive: LT + B.on_pressed
-      Mimic_walk: RB + A.on_pressed
-      Navigation: RT + !LT + B.on_pressed
+      # Mimic_walk: RB + A.on_pressed
+      # Navigation: RT + !LT + B.on_pressed
 
     policy_dir: config/policy/velocity
 
 
-  Navigation:
-    transitions:
-      Passive: LT + B.on_pressed
-      Velocity: RT + A.on_pressed
+  # Navigation:
+  #   transitions:
+  #     Passive: LT + B.on_pressed
+  #     Velocity: RT + A.on_pressed
 
-    # v2_path contains the trajectory policy trained with the corrected
-    # wrist-pitch action scale.
-    policy_dir: config/policy/navigation
+  #   # v2_path contains the trajectory policy trained with the corrected
+  #   # wrist-pitch action scale.
+  #   policy_dir: config/policy/navigation
 
 
-  Mimic_walk:
-    transitions:
-      Passive: LT + B.on_pressed
-      Velocity: RT + A.on_pressed
+  # Mimic_walk:
+  #   transitions:
+  #     Passive: LT + B.on_pressed
+  #     Velocity: RT + A.on_pressed
 
-    motion_file: config/policy/mimic/walk_1000/params/ref_0.npz
-    policy_dir: config/policy/mimic/walk_1000/
-    time_start: 0.0
-    time_end: 1000.0
+  #   motion_file: config/policy/mimic/walk_1000/params/ref_0.npz
+  #   policy_dir: config/policy/mimic/walk_1000/
+  #   time_start: 0.0
+  #   time_end: 1000.0
 
 
   OnlineMimic:
