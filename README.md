@@ -282,7 +282,16 @@ cd deploy/robots/g1/build
 ./g1_ctrl --network=lo
 ```
 
-#### Navigation in simulation
+#### Online MotionPrompt playback
+
+This repository runs the simulator, motion converter, and G1 controller;
+TaskPromptRL sends the motions. Follow the
+[online quickstart](https://github.com/isri-aist/TaskPromptRL/blob/main/doc/online_motion_prompt_quickstart.md)
+for setup, terminal commands, controls, and shutdown.
+
+#### Navigation
+
+##### Navigation in simulation
 
 Run the following commands from the repository root.
 
@@ -313,7 +322,7 @@ the closest sampled path point becomes the reference. The one- and two-second
 lookaheads are index offsets computed from `reference_times / step_dt`; offsets
 beyond the path remain at the terminal goal.
 
-#### Live Navigation pose plot (sim2sim and real robot)
+##### Live Navigation pose plot (sim2sim and real robot)
 
 From the repository root, start the plotter before or after entering Navigation:
 
