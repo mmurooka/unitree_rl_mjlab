@@ -24,7 +24,7 @@ G1_XML: Path = (
   / "robots"
   / "unitree_g1"
   / "xmls"
-  / "g1_29dof_with_hand.xml"
+  / "g1.xml"
 )
 assert G1_XML.exists()
 
