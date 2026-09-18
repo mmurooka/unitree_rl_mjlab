@@ -21,7 +21,6 @@ def main():
     parser.add_argument(
         "--deploy-endpoint", default="ipc:///tmp/task_prompt_rl_deploy.sock"
     )
-    parser.add_argument("--device", default="cpu")
     parser.add_argument("--debug-dir", default="/tmp/task_prompt_rl/received")
     parser.add_argument("--no-save-debug", action="store_true")
     args = parser.parse_args()
@@ -32,8 +31,6 @@ def main():
         args.endpoint,
         "--deploy-endpoint",
         args.deploy_endpoint,
-        "--device",
-        args.device,
         "--debug-dir",
         args.debug_dir,
     ]
