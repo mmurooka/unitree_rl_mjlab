@@ -58,8 +58,6 @@ State_RLBase::State_RLBase(int state_mode, std::string state_string)
         on_exit_ = [service] { service->leave_velocity(); };
         // Keep normal joystick control and existing user/safety transition priority.
         registered_checks.emplace_back([service] {
-            auto request = service->claim(OnlineMotionService::Mode::Velocity);
-            if (!request) return false;
             Eigen::VectorXf actual(29);
             {
                 std::lock_guard<std::mutex> lock(FSMState::lowstate->mutex_);
@@ -67,12 +65,9 @@ State_RLBase::State_RLBase(int state_mode, std::string state_string)
                     actual[i] = FSMState::lowstate->msg_.motor_state()[i].q();
                 }
             }
-            const auto error = service->start_error(*request, actual);
-            if (!error.empty()) {
-                service->reject(request, error);
-                return false;
-            }
-            return service->prepare_transition(request);
+            return service->transition_ready(
+                OnlineMotionService::Mode::Velocity, actual
+            );
         }, FSMStringMap.right.at("OnlineMimic"));
     }
 }

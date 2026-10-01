@@ -64,12 +64,15 @@ private:
         LocalizationPose& pose,
         float& age_seconds) const;
     bool read_simulator_pose(LocalizationPose& pose);
+    bool read_target_pose(LocalizationPose& pose);
     bool read_localization_pose(
         LocalizationPose& pose,
         std::string& source,
         float& age_seconds);
     void reset_navigation_state();
-    void generate_trajectory();
+    void generate_trajectory(
+        const LocalizationPose& simulator_robot_pose,
+        const LocalizationPose& target_pose);
     std::size_t closest_trajectory_index(const Eigen::Vector2f& position) const;
     std::size_t offset_trajectory_index(
         std::size_t reference_index,
@@ -117,6 +120,7 @@ private:
     bool has_odometry{false};
 #endif
     unitree::robot::go2::subscription::SportModeState::SharedPtr simulator_state;
+    unitree::robot::go2::subscription::SportModeState::SharedPtr target_state;
 
     mutable std::mutex joint_command_mutex;
     std::vector<float> latest_policy_action;
@@ -144,6 +148,7 @@ private:
     float initial_odometry_heading{0.0f};
     bool trajectory_initialized{false};
     bool localization_warning_reported{false};
+    bool target_warning_reported{false};
     bool goal_reached{false};
     std::array<float, 3> command{0.0f, 0.0f, 0.0f};
     std::array<float, 6> marker_pose_camera{0.0f, 0.0f, 0.0f, 0.0f, 0.0f, -1.0f};
@@ -156,7 +161,6 @@ private:
     std::vector<float> trajectory_angular_velocities;
     std::chrono::steady_clock::time_point trajectory_started_at{};
     float closest_progress{0.0f};
-    std::mt19937 trajectory_rng;
 
     std::ofstream pose_log;
     std::chrono::steady_clock::time_point navigation_started_at{};
@@ -170,7 +174,11 @@ private:
     std::string active_localization_source;
     std::string odometry_topic{"/glim_ros/odom"};
     std::string simulator_state_topic{"rt/sportmodestate"};
+    std::string target_state_topic{"rt/navigation/target_pose"};
     float odometry_timeout{0.5f};
+    float target_pose_timeout{0.5f};
+    float target_stand_off_distance{0.7f};
+    float target_approach_yaw_offset{0.0f};
     TrajectoryPose goal;
 
     std::array<float, 2> reference_times{1.0f, 2.0f};
@@ -178,19 +186,11 @@ private:
     float stop_hold_duration{1.0f};
     float start_ramp_duration{0.8f};
     float stop_ramp_duration{0.8f};
-    std::array<int, 2> num_segments_range{1, 3};
-    float min_segment_duration{0.7f};
-    float min_radius{0.15f};
-    float straight_probability{0.05f};
-    float curvature_exponent{1.0f};
-    std::array<float, 2> se2_speed_range{0.20f, 0.70f};
-    float characteristic_length{0.45f};
+    float path_tangent_scale{1.0f / 3.0f};
     float tracking_gain{3.0f};
     float max_linear_speed{1.0f};
     float max_angular_speed{1.6f};
-    float standing_probability{0.0f};
     float trajectory_step_dt{0.02f};
-    unsigned int trajectory_seed{0U};
 
     // Retained only to supply the old marker observation during migration.
     float stand_off_distance{0.7f};

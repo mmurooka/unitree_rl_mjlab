@@ -7,9 +7,9 @@ FSM:
     Velocity:
       id: 3
       type: RLBase
-    # Navigation:
-    #   id: 4
-    #   type: Navigation
+    Navigation:
+      id: 4
+      type: Navigation
     # Mimic_walk:
     #   id: 5
     #   type: Mimic
@@ -73,19 +73,19 @@ FSM:
     transitions:
       Passive: LT + B.on_pressed
       # Mimic_walk: RB + A.on_pressed
-      # Navigation: RT + !LT + B.on_pressed
+      Navigation: RT + !LT + B.on_pressed
 
     policy_dir: config/policy/velocity
 
 
-  # Navigation:
-  #   transitions:
-  #     Passive: LT + B.on_pressed
-  #     Velocity: RT + A.on_pressed
+  Navigation:
+    transitions:
+      Passive: LT + B.on_pressed
+      Velocity: RT + A.on_pressed
 
   #   # v2_path contains the trajectory policy trained with the corrected
   #   # wrist-pitch action scale.
-  #   policy_dir: config/policy/navigation
+    policy_dir: config/policy/navigation
 
 
   # Mimic_walk:
@@ -103,6 +103,7 @@ FSM:
     transitions:
       Passive: LT + B.on_pressed
       Velocity: RT + A.on_pressed
+      Navigation: RT + !LT + B.on_pressed
 
     policy_dir: config/policy/mimic/lift_walk_put/
     endpoint: ipc:///tmp/task_prompt_rl_deploy.sock

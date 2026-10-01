@@ -10,6 +10,13 @@ v2_path/exported/policy.onnx
 The wrist-pitch action scale in this directory includes the arm-up tracking
 fix. Do not replace its ONNX file with a policy trained using the old scale.
 
+On Navigation entry, MuJoCo publishes the configured `carry_box` world pose on
+`rt/navigation/target_pose`. Deploy snapshots that pose, places the goal
+`target_stand_off_distance` along the negative box approach axis, and generates
+a smooth path ending at that pose while facing the box. The default scene puts
+the box at x=0.9460365 m, so the default 0.7 m stand-off gives x=0.2460365 m.
+`target_approach_yaw_offset` selects a different face when needed.
+
 The generated target path is written to `log/navigation_target_path.csv` and
 the measured robot path to `log/navigation_pose.csv`.
 Running `scripts/plot_deploy_navigation.py` also opens a per-joint arm tracking

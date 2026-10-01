@@ -92,8 +92,8 @@ int main(int argc, char** argv)
     std::cout << "In arm-enabled Navigation, press [L1 + Up/Down] for the basic raised/lowered arms.\n";
     std::cout << "Press [L1 + Right] for a random evaluated carrying pose.\n";
     std::cout << "And then press [R1 + A/B/Y/X] to control the robot dance.\n";
-    std::cout << "Velocity accepts online MotionPrompt and enters OnlineMimic automatically.\n";
-    std::cout << "OnlineMimic holds the final pose; press [R2 + A] to return to Velocity.\n";
+    std::cout << "Velocity and Navigation accept online MotionPrompt and enter OnlineMimic automatically.\n";
+    std::cout << "OnlineMimic holds the final pose; press [R2 + A] for Velocity or [R2 + B] for Navigation.\n";
 
     while (true)
     {

@@ -31,31 +31,56 @@ void OnlineMotionService::cancel_locked(const std::string& reason)
         request_.reset();
     }
     transitioning_ = false;
+    transition_source_ = Mode::Inactive;
 }
 
-void OnlineMotionService::activate_velocity()
+void OnlineMotionService::activate_source(Mode mode)
 {
     std::lock_guard<std::mutex> lock(mutex_);
-    cancel_locked("ERROR controller returned to Velocity");
-    mode_ = Mode::Velocity;
+    cancel_locked("ERROR controller entered a motion-receiving mode");
+    mode_ = mode;
     accepting_ = true;
 }
 
-void OnlineMotionService::leave_velocity()
+void OnlineMotionService::leave_source(Mode mode, const std::string& name)
 {
     std::lock_guard<std::mutex> lock(mutex_);
+    if (mode_ != mode) return;
     // Preserve a validated request across the normal exit()/enter() transition.
     if (transitioning_) return;
-    cancel_locked("ERROR controller left Velocity");
+    cancel_locked("ERROR controller left " + name);
     mode_ = Mode::Inactive;
     accepting_ = false;
 }
 
-std::shared_ptr<OnlineMotionService::Request> OnlineMotionService::activate_mimic()
+void OnlineMotionService::activate_velocity()
+{
+    activate_source(Mode::Velocity);
+}
+
+void OnlineMotionService::leave_velocity()
+{
+    leave_source(Mode::Velocity, "Velocity");
+}
+
+void OnlineMotionService::activate_navigation()
+{
+    activate_source(Mode::Navigation);
+}
+
+void OnlineMotionService::leave_navigation()
+{
+    leave_source(Mode::Navigation, "Navigation");
+}
+
+std::shared_ptr<OnlineMotionService::Request> OnlineMotionService::activate_mimic(
+    Mode& source_mode)
 {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!transitioning_ || !request_) return nullptr;
+    source_mode = transition_source_;
     transitioning_ = false;
+    transition_source_ = Mode::Inactive;
     mode_ = Mode::Mimic;
     accepting_ = false;
     return request_;
@@ -80,9 +105,25 @@ std::shared_ptr<OnlineMotionService::Request> OnlineMotionService::claim(Mode mo
 bool OnlineMotionService::prepare_transition(const std::shared_ptr<Request>& request)
 {
     std::lock_guard<std::mutex> lock(mutex_);
-    if (mode_ != Mode::Velocity || request_ != request) return false;
+    if ((mode_ != Mode::Velocity && mode_ != Mode::Navigation) ||
+        request_ != request) return false;
+    transition_source_ = mode_;
     transitioning_ = true;
     return true;
+}
+
+bool OnlineMotionService::transition_ready(
+    Mode mode,
+    const Eigen::VectorXf& actual)
+{
+    auto request = claim(mode);
+    if (!request) return false;
+    const auto error = start_error(*request, actual);
+    if (!error.empty()) {
+        reject(request, error);
+        return false;
+    }
+    return prepare_transition(request);
 }
 
 bool OnlineMotionService::started(const std::shared_ptr<Request>& request)

@@ -14,6 +14,13 @@ commands:
     odometry_topic: /glim_ros/odom
     simulator_state_topic: rt/sportmodestate
     odometry_timeout: 0.5
+    # MuJoCo publishes carry_box on this dedicated DDS topic. The generated
+    # goal is target_stand_off_distance behind the box's local approach axis,
+    # facing toward the box. Change the yaw offset to select another box face.
+    target_state_topic: rt/navigation/target_pose
+    target_pose_timeout: 0.5
+    target_stand_off_distance: 0.32
+    target_approach_yaw_offset: 0.0
     pose_log_enabled: true
     pose_log_path: log/navigation_pose.csv
     target_path_log_path: log/navigation_target_path.csv
@@ -27,21 +34,11 @@ commands:
       stop_hold_duration: 1.0
       start_ramp_duration: 0.8
       stop_ramp_duration: 0.8
-      num_segments_range: [1, 3]
-      min_segment_duration: 0.7
-      min_radius: 0.15
-      straight_probability: 0.05
-      curvature_exponent: 1.0
-      se2_speed_range: [0.20, 0.70]
-      characteristic_length: 0.45
+      # Cubic Bezier tangent length as a fraction of direct goal distance.
+      path_tangent_scale: 0.3333333333
       tracking_gain: 3.0
       max_linear_speed: 1.0
       max_angular_speed: 1.6
-      # Zero samples entropy on process startup; use a non-zero seed for a
-      # repeatable deploy path sequence.
-      random_seed: 0
-      # Deploy always generates a moving path when Navigation is entered.
-      standing_probability: 0.0
 
   arm_pose:
     default_pose: down

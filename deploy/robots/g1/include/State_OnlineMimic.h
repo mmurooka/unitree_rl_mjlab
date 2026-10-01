@@ -16,6 +16,7 @@ public:
 private:
     using Loader = OnlineMotionService::Loader;
     bool start_motion(const std::shared_ptr<OnlineMotionService::Request>& request);
+    void request_return_to_source();
     void control();
     void publish_action();
     std::shared_ptr<OnlineMotionService> service_;
@@ -23,7 +24,11 @@ private:
     std::shared_ptr<Loader> playing_;
     size_t tick_ = 0;
     bool holding_ = false;
-    std::atomic<bool> running_{false}, bad_orientation_{false}, return_to_velocity_{false};
+    OnlineMotionService::Mode source_mode_{OnlineMotionService::Mode::Velocity};
+    std::atomic<bool> running_{false};
+    std::atomic<bool> bad_orientation_{false};
+    std::atomic<bool> return_to_velocity_{false};
+    std::atomic<bool> return_to_navigation_{false};
     std::thread control_thread_;
     std::mutex action_mutex_;
     std::vector<float> target_, kp_, kd_;

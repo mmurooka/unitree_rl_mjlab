@@ -105,7 +105,14 @@ int main(int argc, char** argv)
     check(transitions == 0 && request("STATUS") == "READY", "reject stays in Velocity");
     set_joints(0);
     check(load_from_velocity(true).find("ERROR start joint 0") == 0, "recheck after Velocity exits");
-    check(state.registered_checks.back().first(), "changed pose requests return to Velocity");
+    bool returns_to_velocity = false;
+    for (const auto& transition : state.registered_checks) {
+        if (transition.second == FSMStringMap.right.at("Velocity") &&
+            transition.first()) {
+            returns_to_velocity = true;
+        }
+    }
+    check(returns_to_velocity, "changed pose requests return to Velocity");
     state.exit();
     online_motion_service->activate_velocity();
     set_joints(0);
@@ -143,6 +150,39 @@ int main(int argc, char** argv)
     check(read_reply().find("ERROR") == 0, "state exit cancels pending request");
     online_motion_service->activate_velocity();
     check(!motion_ready() && request("STATUS") == "READY", "no stale motion after reentry");
+
+    // Navigation is an equivalent reception source and preserves its origin
+    // while crossing the state exit/OnlineMimic entry boundary.
+    online_motion_service->activate_navigation();
+    set_joints(0);
+    socket.send(zmq::buffer(load), zmq::send_flags::none);
+    bool navigation_transition = false;
+    const auto navigation_deadline = Clock::now() + std::chrono::seconds(5);
+    while (!(socket.get(zmq::sockopt::events) & ZMQ_POLLIN)) {
+        Eigen::VectorXf actual(29);
+        {
+            std::lock_guard<std::mutex> lock(FSMState::lowstate->mutex_);
+            for (int i = 0; i < 29; ++i) {
+                actual[i] = FSMState::lowstate->msg_.motor_state()[i].q();
+            }
+        }
+        if (online_motion_service->transition_ready(
+                OnlineMotionService::Mode::Navigation, actual)) {
+            navigation_transition = true;
+            online_motion_service->leave_navigation();
+            OnlineMotionService::Mode source = OnlineMotionService::Mode::Inactive;
+            auto navigation_request = online_motion_service->activate_mimic(source);
+            check(bool(navigation_request), "Navigation request survives state exit");
+            check(source == OnlineMotionService::Mode::Navigation,
+                  "OnlineMimic records Navigation as its source");
+            check(online_motion_service->started(navigation_request),
+                  "Navigation request starts in OnlineMimic");
+        }
+        check(Clock::now() < navigation_deadline, "Navigation transition timed out");
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    check(navigation_transition && read_reply() == "STARTED",
+          "valid request enters OnlineMimic from Navigation");
     online_motion_service->deactivate();
-    std::cout << "PASS: Velocity entry/rejection, BUSY, immediate readiness, continuous Mimic hold, replacement, cancellation\n";
+    std::cout << "PASS: Velocity/Navigation entry, rejection, BUSY, immediate readiness, continuous Mimic hold, replacement, cancellation\n";
 }
