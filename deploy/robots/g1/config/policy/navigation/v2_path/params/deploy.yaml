@@ -11,6 +11,9 @@ commands:
   navigation:
     # auto | glim | simulator
     localization_source: auto
+    # auto: use fixed relative goals with GLIM (real robot), and simulator body
+    # poses with MuJoCo localization. Use fixed/simulator to force either mode.
+    target_source: auto
     odometry_topic: /glim_ros/odom
     simulator_state_topic: rt/sportmodestate
     odometry_timeout: 0.5
@@ -19,8 +22,19 @@ commands:
     # facing toward the box. Change the yaw offset to select another box face.
     target_state_topic: rt/navigation/target_pose
     target_pose_timeout: 0.5
-    target_stand_off_distance: 0.32
+    target_stand_off_distance: 0.25
     target_approach_yaw_offset: 0.0
+    # After a Navigation-originated OnlineMimic motion finishes, the next
+    # Navigation entry targets the empty place_table instead. This distance is
+    # measured from the table body's center; 0.38 m mirrors the pickup-side
+    # robot position for the current box/table geometry.
+    place_target_state_topic: rt/navigation/place_target_pose
+    place_target_stand_off_distance: 0.38
+    place_target_approach_yaw_offset: 0.0
+    # [forward, left, yaw] from the robot pose captured on each Navigation
+    # entry. These are direct robot-base goals, so no stand-off is subtracted.
+    fixed_carry_box_goal: [1.0, 0.0, 0.0]
+    fixed_place_table_goal: [0.0, 1.0, 1.57079632679]
     pose_log_enabled: true
     pose_log_path: log/navigation_pose.csv
     target_path_log_path: log/navigation_target_path.csv

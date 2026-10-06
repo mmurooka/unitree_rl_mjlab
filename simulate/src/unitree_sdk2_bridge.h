@@ -177,6 +177,23 @@ public:
             navigation_target_state = std::make_unique<HighState_t>(
                 param::config.navigation_target_topic);
         }
+        if (!param::config.navigation_place_target_body.empty()) {
+            navigation_place_target_body_id_ = mj_name2id(
+                mj_model_, mjOBJ_BODY,
+                param::config.navigation_place_target_body.c_str());
+            if (navigation_place_target_body_id_ < 0) {
+                throw std::runtime_error(
+                    "Navigation place target body not found in MuJoCo model: " +
+                    param::config.navigation_place_target_body);
+            }
+            if (param::config.navigation_place_target_topic.empty()) {
+                throw std::runtime_error(
+                    "Navigation place target topic must not be empty when a "
+                    "place target body is configured.");
+            }
+            navigation_place_target_state = std::make_unique<HighState_t>(
+                param::config.navigation_place_target_topic);
+        }
         wireless_controller = std::make_unique<WirelessController_t>();
         wireless_controller->joystick = joystick;
     }
@@ -255,16 +272,21 @@ public:
             }
             highstate->unlockAndPublish();
         }
-        // Publish the configured MuJoCo body's world pose on its own topic.
+        // Publish each configured MuJoCo body's world pose on its own topic.
         // SportModeState is reused so the simulator/deploy path stays usable
         // without ROS 2: position carries xyz and imu_state.quaternion carries
         // MuJoCo's wxyz quaternion.
-        if (navigation_target_state && navigation_target_state->trylock()) {
-            const int position_offset = 3 * navigation_target_body_id_;
-            const int quaternion_offset = 4 * navigation_target_body_id_;
-            auto& target_position = navigation_target_state->msg_.position();
+        const auto publish_navigation_target = [this](
+            const std::unique_ptr<HighState_t>& target_state,
+            int target_body_id) {
+            if (!target_state || !target_state->trylock()) {
+                return;
+            }
+            const int position_offset = 3 * target_body_id;
+            const int quaternion_offset = 4 * target_body_id;
+            auto& target_position = target_state->msg_.position();
             auto& target_quaternion =
-                navigation_target_state->msg_.imu_state().quaternion();
+                target_state->msg_.imu_state().quaternion();
             for (int axis = 0; axis < 3; ++axis) {
                 target_position[axis] = static_cast<float>(
                     mj_data_->xpos[position_offset + axis]);
@@ -273,8 +295,13 @@ public:
                 target_quaternion[component] = static_cast<float>(
                     mj_data_->xquat[quaternion_offset + component]);
             }
-            navigation_target_state->unlockAndPublish();
-        }
+            target_state->unlockAndPublish();
+        };
+        publish_navigation_target(
+            navigation_target_state, navigation_target_body_id_);
+        publish_navigation_target(
+            navigation_place_target_state,
+            navigation_place_target_body_id_);
         // wireless_controller
         if(wireless_controller->joystick) {
             wireless_controller->unlockAndPublish();
@@ -283,12 +310,14 @@ public:
 
     std::unique_ptr<HighState_t> highstate;
     std::unique_ptr<HighState_t> navigation_target_state;
+    std::unique_ptr<HighState_t> navigation_place_target_state;
     std::unique_ptr<WirelessController_t> wireless_controller;
     std::shared_ptr<LowCmd_t> lowcmd;
     std::unique_ptr<LowState_t> lowstate;
     
 private:
     int navigation_target_body_id_ = -1;
+    int navigation_place_target_body_id_ = -1;
     unitree::common::RecurrentThreadPtr thread_;
 };
 

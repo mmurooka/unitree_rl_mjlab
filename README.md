@@ -216,14 +216,18 @@ The G1 controller also includes navigation policies under
 - `L1 + Up/Down`: raise/lower the arms in arm-enabled Navigation
 - `L2 + B`: return to Passive
 
-The Navigation target is the robot-base pose 1 m in front of the localization
-pose captured when Navigation is entered. On the real robot, the controller
-subscribes to `/glim_ros/odom` (`nav_msgs/msg/Odometry`) and uses its planar
-position and yaw instead of integrating the issued velocity command. It waits
-with a zero navigation command when the selected localization source is not
-available, and stops when updates exceed `odometry_timeout` (0.5 s by default).
-The source, topics, and timeout are configured in the selected Navigation
-policy's `params/deploy.yaml`.
+With the current `v2_path` policy, `target_source: auto` uses MuJoCo body poses
+in simulation and fixed relative goals when GLIM supplies real-robot
+localization. The real-robot pickup goal is 1 m forward from the pose captured
+on the first Navigation entry. After a Navigation-originated lift motion, the
+place-table goal is 1 m left from the pose captured on the next entry, with a
+final yaw of +90 degrees. The controller subscribes to `/glim_ros/odom`
+(`nav_msgs/msg/Odometry`) and uses its planar position and yaw instead of
+integrating the issued velocity command. It waits with a zero navigation
+command when the selected localization source is unavailable, and stops when
+updates exceed `odometry_timeout` (0.5 s by default). Target offsets,
+localization sources, topics, and timeouts are configured in the selected
+Navigation policy's `params/deploy.yaml`.
 
 Navigation training samples the arm-up and arm-down targets from `arm_vel`
 with equal probability. Its actor has 118 inputs (the original 104 plus the

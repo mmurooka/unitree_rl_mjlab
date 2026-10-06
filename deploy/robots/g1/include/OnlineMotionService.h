@@ -31,7 +31,8 @@ public:
     bool transition_ready(Mode mode, const Eigen::VectorXf& actual);
     bool started(const std::shared_ptr<Request>& request);
     void reject(const std::shared_ptr<Request>& request, const std::string& reason);
-    void finished();
+    void finished(const Eigen::VectorXf& final_joint_pose);
+    bool consume_completed_navigation_motion(Eigen::VectorXf& final_joint_pose);
     std::string start_error(const Request& request, const Eigen::VectorXf& actual) const;
 
 private:
@@ -44,6 +45,9 @@ private:
     std::mutex mutex_;
     Mode mode_ = Mode::Inactive;
     Mode transition_source_ = Mode::Inactive;
+    Mode mimic_source_ = Mode::Inactive;
+    bool completed_navigation_motion_ = false;
+    Eigen::VectorXf completed_navigation_joint_pose_;
     bool accepting_ = false, transitioning_ = false;
     std::shared_ptr<Request> request_;
     std::atomic<bool> receiving_{true};

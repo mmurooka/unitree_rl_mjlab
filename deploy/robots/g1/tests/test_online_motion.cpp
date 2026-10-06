@@ -153,6 +153,10 @@ int main(int argc, char** argv)
 
     // Navigation is an equivalent reception source and preserves its origin
     // while crossing the state exit/OnlineMimic entry boundary.
+    Eigen::VectorXf completed_navigation_pose;
+    check(!online_motion_service->consume_completed_navigation_motion(
+              completed_navigation_pose),
+          "no place-table advance before Navigation motion completion");
     online_motion_service->activate_navigation();
     set_joints(0);
     socket.send(zmq::buffer(load), zmq::send_flags::none);
@@ -183,6 +187,16 @@ int main(int argc, char** argv)
     }
     check(navigation_transition && read_reply() == "STARTED",
           "valid request enters OnlineMimic from Navigation");
+    const Eigen::VectorXf expected_navigation_pose = fixture->dof_positions.back();
+    online_motion_service->finished(expected_navigation_pose);
+    check(online_motion_service->consume_completed_navigation_motion(
+              completed_navigation_pose),
+          "completed Navigation motion advances the next destination");
+    check(completed_navigation_pose.isApprox(expected_navigation_pose),
+          "completed Navigation motion retains its final joint pose");
+    check(!online_motion_service->consume_completed_navigation_motion(
+              completed_navigation_pose),
+          "Navigation completion event is consumed once");
     online_motion_service->deactivate();
-    std::cout << "PASS: Velocity/Navigation entry, rejection, BUSY, immediate readiness, continuous Mimic hold, replacement, cancellation\n";
+    std::cout << "PASS: Velocity/Navigation entry, rejection, BUSY, immediate readiness, continuous Mimic hold, replacement, cancellation, destination and arm-pose handoff\n";
 }

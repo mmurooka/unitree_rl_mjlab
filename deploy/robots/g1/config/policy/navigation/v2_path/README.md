@@ -10,12 +10,22 @@ v2_path/exported/policy.onnx
 The wrist-pitch action scale in this directory includes the arm-up tracking
 fix. Do not replace its ONNX file with a policy trained using the old scale.
 
-On Navigation entry, MuJoCo publishes the configured `carry_box` world pose on
-`rt/navigation/target_pose`. Deploy snapshots that pose, places the goal
-`target_stand_off_distance` along the negative box approach axis, and generates
-a smooth path ending at that pose while facing the box. The default scene puts
-the box at x=0.9460365 m, so the default 0.7 m stand-off gives x=0.2460365 m.
-`target_approach_yaw_offset` selects a different face when needed.
+On the first Navigation entry, deploy snapshots the `carry_box` pose from
+`rt/navigation/target_pose` and approaches its front. When an OnlineMimic
+motion entered from Navigation finishes, the next Navigation entry switches to
+the empty `place_table` pose from `rt/navigation/place_target_pose` and retains
+the motion's final arm pose while walking there. The current scene/config
+produces pickup goal `(0.62, 0.0, 0.0)` and place-table goal approximately
+`(0.2, 0.62, pi/2)` in MuJoCo world coordinates. Stand-off distances and
+approach-face yaw offsets are configurable independently.
+
+On the real robot, `target_source: auto` selects fixed goals when GLIM is the
+active localization source. The first Navigation entry goes 1 m forward with
+no yaw change. After the lift motion, the next entry goes 1 m left and finishes
+at +90 degrees, while retaining the lifted arm pose. Both offsets are relative
+to the robot pose captured on that Navigation entry and can be changed with
+`fixed_carry_box_goal` and `fixed_place_table_goal`. Set `target_source` to
+`fixed` or `simulator` to override automatic selection.
 
 The generated target path is written to `log/navigation_target_path.csv` and
 the measured robot path to `log/navigation_pose.csv`.

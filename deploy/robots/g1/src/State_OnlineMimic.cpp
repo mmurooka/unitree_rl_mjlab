@@ -155,7 +155,7 @@ void State_OnlineMimic::control()
         bad_orientation_ = isaaclab::mdp::bad_orientation(tracking_.get(), 1.0);
         publish_action();
         if (holding_ && tick_ == static_cast<size_t>(playing_->num_frames)) {
-            service_->finished();
+            service_->finished(playing_->joint_pos());
             ++tick_;  // Only announce READY once; keep a new request's BUSY state intact.
             spdlog::info("Online motion FINISHED; holding final reference, READY");
         } else if (!holding_) {

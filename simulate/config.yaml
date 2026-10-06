@@ -29,6 +29,11 @@ navigation_target:
   body: "carry_box"
   topic: "rt/navigation/target_pose"
 
+# Destination used after a Navigation-originated OnlineMimic motion finishes.
+navigation_place_target:
+  body: "place_table"
+  topic: "rt/navigation/place_target_pose"
+
 # Livox MID-360 compatible ROS 2 output
 mid360:
   enabled: true
