@@ -4,7 +4,7 @@ std::shared_ptr<OnlineMotionService> online_motion_service;
 
 OnlineMotionService::OnlineMotionService(const YAML::Node& cfg)
 {
-    threshold_ = cfg["start_joint_threshold_degrees"].as<float>(30.0f) *
+    threshold_ = cfg["start_joint_threshold_degrees"].as<float>(20.0f) *
                  3.14159265358979323846f / 180.0f;
     if (!std::isfinite(threshold_) || threshold_ <= 0) {
         throw std::runtime_error("Invalid online motion start joint threshold");

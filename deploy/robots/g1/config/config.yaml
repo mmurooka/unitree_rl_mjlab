@@ -107,4 +107,4 @@ FSM:
 
     policy_dir: config/policy/mimic/lift_walk_put/
     endpoint: ipc:///tmp/task_prompt_rl_deploy.sock
-    start_joint_threshold_degrees: 30.0
+    start_joint_threshold_degrees: 20.0
