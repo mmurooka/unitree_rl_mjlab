@@ -3,6 +3,7 @@
 #include "FSM/State_FixStand.h"
 #include "FSM/State_RLBase.h"
 #include "State_Mimic.h"
+#include "NavigationGoalService.h"
 #include "State_OnlineMimic.h"
 #include "State_Navigation.h"
 
@@ -80,6 +81,10 @@ int main(int argc, char** argv)
         online_motion_service = std::make_shared<OnlineMotionService>(
             param::config["FSM"]["OnlineMimic"]);
     }
+    if (param::config["FSM"]["_"]["Navigation"]) {
+        navigation_goal_service = std::make_shared<NavigationGoalService>(
+            param::config["FSM"]["Navigation"]);
+    }
 
     // Initialize FSM
     auto fsm = std::make_unique<CtrlFSM>(param::config["FSM"]);
@@ -87,13 +92,13 @@ int main(int argc, char** argv)
 
     std::cout << "Press [L2 + Up] to enter FixStand mode.\n";
     std::cout << "And then press [R2 + A] to start controlling the robot.\n";
-    std::cout << "Press [R2 + B] to follow a newly generated Navigation path.\n";
+    std::cout << "Send x/y/yaw with send_navigation_goal.py to enter Navigation.\n";
     std::cout << "Press [R2 + A] to return from Navigation to Velocity.\n";
     std::cout << "In arm-enabled Navigation, press [L1 + Up/Down] for the basic raised/lowered arms.\n";
     std::cout << "Press [L1 + Right] for a random evaluated carrying pose.\n";
     std::cout << "And then press [R1 + A/B/Y/X] to control the robot dance.\n";
     std::cout << "Velocity and Navigation accept online MotionPrompt and enter OnlineMimic automatically.\n";
-    std::cout << "OnlineMimic holds the final pose; press [R2 + A] for Velocity or [R2 + B] for Navigation.\n";
+    std::cout << "OnlineMimic holds the final pose and accepts an external Navigation goal when ready.\n";
 
     while (true)
     {

@@ -26,12 +26,6 @@ inline struct SimulationConfig
     int enable_elastic_band;
     int band_attached_link = 0;
 
-    std::string navigation_target_body;
-    std::string navigation_target_topic = "rt/navigation/target_pose";
-    std::string navigation_place_target_body;
-    std::string navigation_place_target_topic =
-        "rt/navigation/place_target_pose";
-
     bool enable_mid360 = false;
     std::filesystem::path mid360_scan_pattern;
     std::string mid360_frame_id = "livox_frame";
@@ -69,18 +63,6 @@ inline struct SimulationConfig
             joystick_bits = cfg["joystick_bits"].as<int>();
             print_scene_information = cfg["print_scene_information"].as<int>();
             enable_elastic_band = cfg["enable_elastic_band"].as<int>();
-
-            if (const auto target = cfg["navigation_target"])
-            {
-                navigation_target_body = target["body"].as<std::string>("");
-                navigation_target_topic = target["topic"].as<std::string>(navigation_target_topic);
-            }
-            if (const auto target = cfg["navigation_place_target"])
-            {
-                navigation_place_target_body = target["body"].as<std::string>("");
-                navigation_place_target_topic = target["topic"].as<std::string>(
-                    navigation_place_target_topic);
-            }
 
             if (const auto lidar = cfg["mid360"])
             {

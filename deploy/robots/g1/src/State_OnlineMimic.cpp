@@ -4,7 +4,9 @@
 #include <chrono>
 
 State_OnlineMimic::State_OnlineMimic(int state_mode, std::string state_string)
-    : FSMState(state_mode, state_string), service_(online_motion_service)
+    : FSMState(state_mode, state_string),
+      service_(online_motion_service),
+      navigation_service_(navigation_goal_service)
 {
     if (!service_) throw std::runtime_error("Online motion service has not been initialized");
     const auto cfg = param::config["FSM"][state_string];
@@ -31,6 +33,17 @@ State_OnlineMimic::State_OnlineMimic(int state_mode, std::string state_string)
             [this] { return return_to_navigation_.load(); },
             FSMStringMap.right.at("Navigation")
         );
+        if (navigation_service_) {
+            const auto navigation_service = navigation_service_;
+            registered_checks.emplace_back(
+                [navigation_service] {
+                    return navigation_service->transition_ready(
+                        NavigationGoalService::Mode::Mimic
+                    );
+                },
+                FSMStringMap.right.at("Navigation")
+            );
+        }
     }
 }
 
@@ -46,6 +59,9 @@ bool State_OnlineMimic::start_motion(const std::shared_ptr<OnlineMotionService::
     if (!error.empty()) {
         service_->reject(request, error);
         return false;
+    }
+    if (navigation_service_) {
+        navigation_service_->set_mimic_busy();
     }
     playing_ = request->motion;
     State_Mimic::motion = playing_;
@@ -75,6 +91,9 @@ void State_OnlineMimic::enter()
     return_to_velocity_ = false;
     return_to_navigation_ = false;
     source_mode_ = OnlineMotionService::Mode::Velocity;
+    if (navigation_service_) {
+        navigation_service_->activate_mimic();
+    }
     {
         std::lock_guard<std::mutex> lock(action_mutex_);
         target_.clear();  // Do not publish stale targets if entry is rejected.
@@ -108,6 +127,9 @@ void State_OnlineMimic::enter()
 
 void State_OnlineMimic::exit()
 {
+    if (navigation_service_) {
+        navigation_service_->leave_mimic();
+    }
     service_->deactivate();
     running_ = false;
     if (control_thread_.joinable()) control_thread_.join();
@@ -155,7 +177,10 @@ void State_OnlineMimic::control()
         bad_orientation_ = isaaclab::mdp::bad_orientation(tracking_.get(), 1.0);
         publish_action();
         if (holding_ && tick_ == static_cast<size_t>(playing_->num_frames)) {
-            service_->finished(playing_->joint_pos());
+            service_->finished();
+            if (navigation_service_) {
+                navigation_service_->set_mimic_ready();
+            }
             ++tick_;  // Only announce READY once; keep a new request's BUSY state intact.
             spdlog::info("Online motion FINISHED; holding final reference, READY");
         } else if (!holding_) {

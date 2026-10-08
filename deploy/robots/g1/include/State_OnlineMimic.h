@@ -1,5 +1,6 @@
 #pragma once
 
+#include "NavigationGoalService.h"
 #include "OnlineMotionService.h"
 #include <atomic>
 #include <mutex>
@@ -20,6 +21,7 @@ private:
     void control();
     void publish_action();
     std::shared_ptr<OnlineMotionService> service_;
+    std::shared_ptr<NavigationGoalService> navigation_service_;
     std::unique_ptr<isaaclab::ManagerBasedRLEnv> tracking_;
     std::shared_ptr<Loader> playing_;
     size_t tick_ = 0;

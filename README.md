@@ -212,29 +212,30 @@ The G1 controller also includes navigation policies under
 
 - `L2 + Up`: Passive to FixStand
 - `R2 + A`: FixStand/Navigation to Velocity
-- `R2 + B`: FixStand/Velocity to Navigation
 - `L1 + Up/Down`: raise/lower the arms in arm-enabled Navigation
 - `L2 + B`: return to Passive
 
-With the current `v2_path` policy, `target_source: auto` uses MuJoCo body poses
-in simulation and fixed relative goals when GLIM supplies real-robot
-localization. The real-robot pickup goal is 1 m forward from the pose captured
-on the first Navigation entry. After a Navigation-originated lift motion, the
-place-table goal is 1 m left from the pose captured on the next entry, with a
-final yaw of +90 degrees. The controller subscribes to `/glim_ros/odom`
+Navigation is started externally with TaskPromptRL's
+`scripts/send_navigation_goal.py`. Its positional arguments are `x y yaw` in
+the robot frame captured when the goal starts: +x is forward, +y is left, and
+yaw is in radians. For example, `1 0 0` moves 1 m forward and `0 1 1.5708`
+moves 1 m left while turning left. Sending from Velocity or a finished/holding
+OnlineMimic automatically enters Navigation; sending during Navigation replaces
+the active goal. OnlineMimic reports `BUSY` until its motion has finished.
+Navigation captures the measured arm joint angles immediately before entry and
+uses them as its arm command, preserving a lifted posture without pickup/place
+iteration state.
+
+On the real robot, the controller subscribes to `/glim_ros/odom`
 (`nav_msgs/msg/Odometry`) and uses its planar position and yaw instead of
 integrating the issued velocity command. It waits with a zero navigation
 command when the selected localization source is unavailable, and stops when
-updates exceed `odometry_timeout` (0.5 s by default). Target offsets,
-localization sources, topics, and timeouts are configured in the selected
-Navigation policy's `params/deploy.yaml`.
+updates exceed `odometry_timeout` (0.5 s by default). Localization sources,
+topics, and timeouts are configured in the selected Navigation policy's
+`params/deploy.yaml`.
 
-Navigation training samples the arm-up and arm-down targets from `arm_vel`
-with equal probability. Its actor has 118 inputs (the original 104 plus the
-14-joint arm target). Copy the retrained ONNX model to
-`deploy/robots/g1/config/policy/navigation/v1_arm/exported/policy.onnx`; until
-that file is present the controller keeps selecting the existing 104-input
-`v0` policy.
+The current trajectory actor has 120 inputs, including the 14-joint arm target
+and future path observations.
 
 For sim2sim, the default `localization_source: auto` falls back to the MuJoCo
 truth position published on `rt/sportmodestate`; yaw comes from the simulated
@@ -318,10 +319,15 @@ cp logs/rsl_rl/g1_navigation/<run>/policy.onnx deploy/robots/g1/config/policy/na
 `v2_path` uses the corrected Navigation wrist-pitch action scale. Do not
 replace its ONNX file with a policy trained using the old scale.
 
-When `R2 + B` enters Navigation, the controller immediately samples one path
-with the same arc generator used for training. No terminal goal input is
-required. The path is anchored to the localization pose captured on entry and
-its terminal position and yaw become the displayed goal. At each policy step,
+From the TaskPromptRL repository, send a goal after the controller is running:
+
+```bash
+python scripts/send_navigation_goal.py 1.0 0.0 0.0
+```
+
+The controller generates a path whose terminal position and yaw match the
+external goal. The path is anchored to the localization pose captured when the
+goal starts. At each policy step,
 the closest sampled path point becomes the reference. The one- and two-second
 lookaheads are index offsets computed from `reference_times / step_dt`; offsets
 beyond the path remain at the terminal goal.
@@ -343,8 +349,9 @@ projected gravity, and the localization position/quaternion. The
 `slam_pose_*` columns contain GLIM odometry on the real robot and MuJoCo truth
 in sim2sim; use the `source` column (`glim` or `simulator`) to distinguish them.
 Quaternion columns are ordered `qx,qy,qz,qw`. `command_joint_15` through
-`command_joint_28` are the 14 arm-pose target angles selected by the deploy
-`L1 + Up/Down` input. They are intentionally not the policy's processed
+`command_joint_28` are the 14 arm-pose target angles. They start from the
+measured pose captured immediately before Navigation and can then be changed
+with the deploy `L1` controls. They are intentionally not the policy's processed
 full-body output. `action_joint_*` is the last exact `q` value written to the
 mapped LowCmd motor entry. Encoder/action columns remain available for all 29
 joints. Unavailable data is written as `nan` without stopping the other

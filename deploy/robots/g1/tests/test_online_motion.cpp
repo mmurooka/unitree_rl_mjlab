@@ -33,13 +33,18 @@ int main(int argc, char** argv)
     set_joints(0);
     param::proj_dir = argv[1];
     const std::string endpoint = "ipc:///tmp/tprl-online-smoke-" + std::to_string(getpid()) + ".sock";
+    const std::string navigation_endpoint =
+        "ipc:///tmp/tprl-navigation-smoke-" + std::to_string(getpid()) + ".sock";
     auto cfg = param::config["FSM"]["OnlineMimic"];
     cfg["policy_dir"] = argc == 4 ? argv[3] : "config/policy/mimic/dance1_subject2";
     cfg["endpoint"] = endpoint;
     cfg["start_joint_threshold_degrees"] = 30;
+    auto navigation_cfg = param::config["FSM"]["Navigation"];
+    navigation_cfg["endpoint"] = navigation_endpoint;
     param::config["FSM"]["Velocity"]["policy_dir"] = "config/policy/velocity/v0";
     FSMStringMap.insert({1, "Passive"});
     FSMStringMap.insert({3, "Velocity"});
+    FSMStringMap.insert({4, "Navigation"});
     FSMStringMap.insert({6, "OnlineMimic"});
     {
         State_RLBase offline_velocity(3, "Velocity");
@@ -47,6 +52,8 @@ int main(int argc, char** argv)
             check(transition.second != 6, "ordinary Velocity works without online service");
         }
     }
+    navigation_goal_service = std::make_shared<NavigationGoalService>(
+        navigation_cfg);
     online_motion_service = std::make_shared<OnlineMotionService>(cfg);
     State_RLBase velocity(3, "Velocity");
     auto motion_ready = [&] {
@@ -151,12 +158,8 @@ int main(int argc, char** argv)
     online_motion_service->activate_velocity();
     check(!motion_ready() && request("STATUS") == "READY", "no stale motion after reentry");
 
-    // Navigation is an equivalent reception source and preserves its origin
-    // while crossing the state exit/OnlineMimic entry boundary.
-    Eigen::VectorXf completed_navigation_pose;
-    check(!online_motion_service->consume_completed_navigation_motion(
-              completed_navigation_pose),
-          "no place-table advance before Navigation motion completion");
+    // Navigation is an equivalent MotionPrompt reception source and preserves
+    // its origin while crossing the state exit/OnlineMimic entry boundary.
     online_motion_service->activate_navigation();
     set_joints(0);
     socket.send(zmq::buffer(load), zmq::send_flags::none);
@@ -187,16 +190,74 @@ int main(int argc, char** argv)
     }
     check(navigation_transition && read_reply() == "STARTED",
           "valid request enters OnlineMimic from Navigation");
-    const Eigen::VectorXf expected_navigation_pose = fixture->dof_positions.back();
-    online_motion_service->finished(expected_navigation_pose);
-    check(online_motion_service->consume_completed_navigation_motion(
-              completed_navigation_pose),
-          "completed Navigation motion advances the next destination");
-    check(completed_navigation_pose.isApprox(expected_navigation_pose),
-          "completed Navigation motion retains its final joint pose");
-    check(!online_motion_service->consume_completed_navigation_motion(
-              completed_navigation_pose),
-          "Navigation completion event is consumed once");
+    online_motion_service->finished();
     online_motion_service->deactivate();
-    std::cout << "PASS: Velocity/Navigation entry, rejection, BUSY, immediate readiness, continuous Mimic hold, replacement, cancellation, destination and arm-pose handoff\n";
+
+    // External Navigation goals transition from Velocity/held OnlineMimic and
+    // can replace the active goal without a state transition.
+    zmq::socket_t navigation_socket(context, zmq::socket_type::req);
+    navigation_socket.set(zmq::sockopt::rcvtimeo, 5000);
+    navigation_socket.set(zmq::sockopt::linger, 0);
+    navigation_socket.connect(navigation_endpoint);
+    auto read_navigation_reply = [&] {
+        zmq::message_t reply;
+        check(bool(navigation_socket.recv(reply)), "Navigation response timeout");
+        return reply.to_string();
+    };
+    auto send_navigation = [&](const std::string& command) {
+        navigation_socket.send(zmq::buffer(command), zmq::send_flags::none);
+    };
+
+    navigation_goal_service->activate_velocity();
+    send_navigation("GOAL 1.0 -0.25 0.5");
+    const auto goal_deadline = Clock::now() + std::chrono::seconds(5);
+    while (!navigation_goal_service->transition_ready(
+        NavigationGoalService::Mode::Velocity)) {
+        check(Clock::now() < goal_deadline, "Navigation transition timed out");
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    navigation_goal_service->leave_velocity();
+    NavigationGoalService::Goal goal;
+    check(navigation_goal_service->start_navigation(goal),
+          "Navigation starts the claimed external goal");
+    check(read_navigation_reply() == "STARTED", "Navigation sender is acknowledged");
+    check(std::abs(goal.x - 1.0f) < 1e-6f &&
+          std::abs(goal.y + 0.25f) < 1e-6f &&
+          std::abs(goal.yaw - 0.5f) < 1e-6f,
+          "Navigation goal values survive transport");
+
+    send_navigation("GOAL 0.0 1.0 1.57079632679");
+    const auto replacement_deadline = Clock::now() + std::chrono::seconds(5);
+    while (!navigation_goal_service->consume_navigation_goal(goal)) {
+        check(Clock::now() < replacement_deadline,
+              "Navigation replacement timed out");
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    check(read_navigation_reply() == "STARTED",
+          "active Navigation accepts a replacement goal");
+    check(std::abs(goal.y - 1.0f) < 1e-6f,
+          "replacement Navigation goal survives transport");
+    navigation_goal_service->leave_navigation();
+
+    navigation_goal_service->activate_mimic();
+    send_navigation("GOAL 0 0 0");
+    check(read_navigation_reply() == "BUSY",
+          "playing OnlineMimic rejects Navigation goals as BUSY");
+    navigation_goal_service->set_mimic_ready();
+    send_navigation("GOAL 0.5 0 0");
+    const auto mimic_goal_deadline = Clock::now() + std::chrono::seconds(5);
+    while (!navigation_goal_service->transition_ready(
+        NavigationGoalService::Mode::Mimic)) {
+        check(Clock::now() < mimic_goal_deadline,
+              "held OnlineMimic Navigation transition timed out");
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    navigation_goal_service->leave_mimic();
+    check(navigation_goal_service->start_navigation(goal),
+          "held OnlineMimic starts external Navigation");
+    check(read_navigation_reply() == "STARTED",
+          "held OnlineMimic Navigation sender is acknowledged");
+    navigation_goal_service->deactivate();
+
+    std::cout << "PASS: online motion lifecycle and external Navigation goal transport/transitions\n";
 }

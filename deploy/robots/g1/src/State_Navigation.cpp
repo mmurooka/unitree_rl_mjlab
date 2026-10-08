@@ -32,20 +32,6 @@ std::array<float, 2> read_range(
     return {node[0].as<float>(), node[1].as<float>()};
 }
 
-std::array<float, 3> read_goal(
-    const YAML::Node& node,
-    const std::array<float, 3>& fallback)
-{
-    if (!node || !node.IsSequence() || node.size() != 3) {
-        return fallback;
-    }
-    return {
-        node[0].as<float>(),
-        node[1].as<float>(),
-        node[2].as<float>()
-    };
-}
-
 float smoothstep(float ratio)
 {
     ratio = std::clamp(ratio, 0.0f, 1.0f);
@@ -165,7 +151,8 @@ REGISTER_OBSERVATION(navigation_arm_pose_commands)
 }  // namespace isaaclab
 
 State_Navigation::State_Navigation(int state_mode, std::string state_string)
-    : FSMState(state_mode, state_string)
+    : FSMState(state_mode, state_string),
+      navigation_service(navigation_goal_service)
 {
     if (instance_ != nullptr) {
         throw std::runtime_error("Only one Navigation state can be configured.");
@@ -182,41 +169,9 @@ State_Navigation::State_Navigation(int state_mode, std::string state_string)
     localization_source = nav_cfg["localization_source"].as<std::string>(
         localization_source
     );
-    target_source = nav_cfg["target_source"].as<std::string>(target_source);
     odometry_topic = nav_cfg["odometry_topic"].as<std::string>(odometry_topic);
     simulator_state_topic = nav_cfg["simulator_state_topic"].as<std::string>(
         simulator_state_topic
-    );
-    target_state_topic = nav_cfg["target_state_topic"].as<std::string>(
-        target_state_topic
-    );
-    place_target_state_topic =
-        nav_cfg["place_target_state_topic"].as<std::string>(
-            place_target_state_topic
-        );
-    target_pose_timeout = nav_cfg["target_pose_timeout"].as<float>(
-        target_pose_timeout
-    );
-    target_stand_off_distance = nav_cfg["target_stand_off_distance"].as<float>(
-        target_stand_off_distance
-    );
-    target_approach_yaw_offset =
-        nav_cfg["target_approach_yaw_offset"].as<float>(
-            target_approach_yaw_offset
-        );
-    place_target_stand_off_distance =
-        nav_cfg["place_target_stand_off_distance"].as<float>(
-            place_target_stand_off_distance
-        );
-    place_target_approach_yaw_offset =
-        nav_cfg["place_target_approach_yaw_offset"].as<float>(
-            place_target_approach_yaw_offset
-        );
-    fixed_carry_box_goal = read_goal(
-        nav_cfg["fixed_carry_box_goal"], fixed_carry_box_goal
-    );
-    fixed_place_table_goal = read_goal(
-        nav_cfg["fixed_place_table_goal"], fixed_place_table_goal
     );
     pose_log_enabled = nav_cfg["pose_log_enabled"].as<bool>(pose_log_enabled);
     pose_log_path = nav_cfg["pose_log_path"].as<std::string>(
@@ -275,13 +230,6 @@ State_Navigation::State_Navigation(int state_mode, std::string state_string)
             "Navigation localization_source must be auto, glim, or simulator."
         );
     }
-    if (target_source != "auto" &&
-        target_source != "fixed" &&
-        target_source != "simulator") {
-        throw std::runtime_error(
-            "Navigation target_source must be auto, fixed, or simulator."
-        );
-    }
 #ifdef G1_NAVIGATION_WITH_ROS2
     const bool use_glim = localization_source != "simulator";
 #else
@@ -298,25 +246,6 @@ State_Navigation::State_Navigation(int state_mode, std::string state_string)
         (use_simulator && simulator_state_topic.empty()) ||
         odometry_timeout <= 0.0f) {
         throw std::runtime_error("Invalid Navigation localization configuration.");
-    }
-    const auto finite_goal = [](const std::array<float, 3>& configured_goal) {
-        return std::all_of(
-            configured_goal.begin(), configured_goal.end(),
-            [](float value) { return std::isfinite(value); }
-        );
-    };
-    if (simulator_state_topic.empty() || target_state_topic.empty() ||
-        place_target_state_topic.empty() ||
-        !std::isfinite(target_pose_timeout) || target_pose_timeout <= 0.0f ||
-        !std::isfinite(target_stand_off_distance) ||
-        target_stand_off_distance < 0.0f ||
-        !std::isfinite(target_approach_yaw_offset) ||
-        !std::isfinite(place_target_stand_off_distance) ||
-        place_target_stand_off_distance < 0.0f ||
-        !std::isfinite(place_target_approach_yaw_offset) ||
-        !finite_goal(fixed_carry_box_goal) ||
-        !finite_goal(fixed_place_table_goal)) {
-        throw std::runtime_error("Invalid Navigation target-pose configuration.");
     }
     if (pose_log_enabled &&
         (pose_log_path.empty() || target_path_log_path.empty() ||
@@ -507,8 +436,6 @@ State_Navigation::State_Navigation(int state_mode, std::string state_string)
         ros_thread = std::thread([this] { ros_executor->spin(); });
     }
 #endif
-    // The simulator robot pose is also needed when GLIM supplies localization:
-    // it puts the target body and the robot in one common MuJoCo world frame.
     simulator_state = std::make_shared<
         unitree::robot::go2::subscription::SportModeState
     >(simulator_state_topic);
@@ -516,32 +443,15 @@ State_Navigation::State_Navigation(int state_mode, std::string state_string)
         1U,
         static_cast<uint32_t>(odometry_timeout * 1000.0f)
     ));
-    target_state = std::make_shared<
-        unitree::robot::go2::subscription::SportModeState
-    >(target_state_topic);
-    target_state->set_timeout_ms(std::max<uint32_t>(
-        1U,
-        static_cast<uint32_t>(target_pose_timeout * 1000.0f)
-    ));
-    place_target_state = std::make_shared<
-        unitree::robot::go2::subscription::SportModeState
-    >(place_target_state_topic);
-    place_target_state->set_timeout_ms(std::max<uint32_t>(
-        1U,
-        static_cast<uint32_t>(target_pose_timeout * 1000.0f)
-    ));
     spdlog::info(
         "Navigation localization source: {} (GLIM: {}, simulator: {}, "
-        "timeout: {:.2f} s); target source: {}; simulator target poses: {}, "
-        "{} (timeout: {:.2f} s).",
+        "timeout: {:.2f} s); external goal endpoint: {}.",
         localization_source,
         odometry_topic,
         simulator_state_topic,
         odometry_timeout,
-        target_source,
-        target_state_topic,
-        place_target_state_topic,
-        target_pose_timeout
+        state_cfg["endpoint"].as<std::string>(
+            "ipc:///tmp/task_prompt_rl_navigation.sock")
     );
 }
 
@@ -570,49 +480,51 @@ State_Navigation::~State_Navigation()
 
 void State_Navigation::enter()
 {
-    Eigen::VectorXf completed_joint_pose;
-    if (online_motion_service &&
-        online_motion_service->consume_completed_navigation_motion(
-            completed_joint_pose)) {
-        navigate_to_place_target = true;
-        spdlog::info(
-            "Navigation destination advanced from carry_box to place_table "
-            "after OnlineMimic completion."
-        );
+    NavigationGoalService::Goal external_goal;
+    if (navigation_service && navigation_service->start_navigation(external_goal)) {
+        set_requested_goal(external_goal);
+    }
 
+    std::vector<float> entry_arm_pose;
+    bool valid_entry_arm_pose = !arm_command_joint_ids.empty();
+    entry_arm_pose.reserve(arm_command_joint_ids.size());
+    {
+        std::lock_guard<std::mutex> lock(FSMState::lowstate->mutex_);
         const auto& joint_ids_map = env->robot->data.joint_ids_map;
-        bool valid_pose =
-            completed_joint_pose.size() ==
-                static_cast<Eigen::Index>(joint_ids_map.size()) &&
-            completed_joint_pose.allFinite();
-        std::vector<float> completed_arm_pose;
-        completed_arm_pose.reserve(arm_command_joint_ids.size());
+        const auto& motor_state = FSMState::lowstate->msg_.motor_state();
         for (const int policy_joint_id : arm_command_joint_ids) {
             if (policy_joint_id < 0 ||
                 policy_joint_id >= static_cast<int>(joint_ids_map.size())) {
-                valid_pose = false;
+                valid_entry_arm_pose = false;
                 break;
             }
             const int sdk_joint_id = joint_ids_map[policy_joint_id];
-            if (sdk_joint_id < 0 || sdk_joint_id >= completed_joint_pose.size()) {
-                valid_pose = false;
+            if (sdk_joint_id < 0 ||
+                sdk_joint_id >= static_cast<int>(motor_state.size())) {
+                valid_entry_arm_pose = false;
                 break;
             }
-            completed_arm_pose.push_back(completed_joint_pose[sdk_joint_id]);
+            const float joint_position = motor_state[sdk_joint_id].q();
+            if (!std::isfinite(joint_position)) {
+                valid_entry_arm_pose = false;
+                break;
+            }
+            entry_arm_pose.push_back(joint_position);
         }
-        if (valid_pose && completed_arm_pose.size() == arm_down_pose.size()) {
-            carried_arm_pose = std::move(completed_arm_pose);
-            spdlog::info(
-                "Navigation is retaining the {}-joint final OnlineMimic arm pose.",
-                carried_arm_pose.size()
-            );
-        } else {
-            carried_arm_pose.clear();
+    }
+    if (!valid_entry_arm_pose || entry_arm_pose.size() != arm_down_pose.size()) {
+        entry_arm_pose = arm_down_pose;
+        if (!arm_down_pose.empty()) {
             spdlog::warn(
-                "Cannot retain the final OnlineMimic arm pose; Navigation will "
-                "use its configured default pose."
+                "Cannot capture the pre-Navigation arm pose; using the "
+                "configured default pose."
             );
         }
+    } else {
+        spdlog::info(
+            "Navigation is retaining the {}-joint pose measured on entry.",
+            entry_arm_pose.size()
+        );
     }
 
     for (int i = 0; i < env->robot->data.joint_stiffness.size(); ++i) {
@@ -627,9 +539,6 @@ void State_Navigation::enter()
     open_pose_log();
     env->reset();
     if (!arm_down_pose.empty()) {
-        const auto& entry_arm_pose = carried_arm_pose.empty()
-            ? arm_down_pose
-            : carried_arm_pose;
         env->set_command("arm_pose", entry_arm_pose);
         env->set_command("arm_pose_target", entry_arm_pose);
         arm_pose_after_down.clear();
@@ -665,9 +574,7 @@ void State_Navigation::enter()
             sleep_until += dt;
         }
     });
-    if (online_motion_service) {
-        online_motion_service->activate_navigation();
-    }
+    if (online_motion_service) online_motion_service->activate_navigation();
 }
 
 bool State_Navigation::prepare_enter()
@@ -720,6 +627,9 @@ void State_Navigation::run()
 
 void State_Navigation::exit()
 {
+    if (navigation_service) {
+        navigation_service->leave_navigation();
+    }
     if (online_motion_service) {
         online_motion_service->leave_navigation();
     }
@@ -985,39 +895,6 @@ bool State_Navigation::read_simulator_pose(LocalizationPose& pose)
         std::isfinite(pose.heading);
 }
 
-bool State_Navigation::read_target_pose(
-    const unitree::robot::go2::subscription::SportModeState::SharedPtr& state,
-    LocalizationPose& pose)
-{
-    if (!state || state->isTimeout()) {
-        return false;
-    }
-
-    {
-        std::lock_guard<std::mutex> lock(state->mutex_);
-        const auto& target_position = state->msg_.position();
-        const auto& target_quaternion =
-            state->msg_.imu_state().quaternion();
-        pose.position = Eigen::Vector3f(
-            target_position[0], target_position[1], target_position[2]
-        );
-        pose.orientation = Eigen::Quaternionf(
-            target_quaternion[0],
-            target_quaternion[1],
-            target_quaternion[2],
-            target_quaternion[3]
-        );
-    }
-    if (pose.orientation.squaredNorm() < 1.0e-8f) {
-        return false;
-    }
-    pose.orientation.normalize();
-    pose.heading = quaternion_heading(pose.orientation);
-    return pose.position.allFinite() &&
-        pose.orientation.coeffs().allFinite() &&
-        std::isfinite(pose.heading);
-}
-
 bool State_Navigation::read_localization_pose(
     LocalizationPose& pose,
     std::string& source,
@@ -1065,7 +942,7 @@ void State_Navigation::reset_navigation_state()
     trajectory_initialized = false;
     active_localization_source.clear();
     localization_warning_reported = false;
-    target_warning_reported = false;
+    goal_warning_reported = false;
     goal_reached = false;
     goal = TrajectoryPose{};
     trajectory_poses.clear();
@@ -1092,12 +969,24 @@ void State_Navigation::reset_navigation_state()
     set_safe_stand_observations();
 }
 
+void State_Navigation::set_requested_goal(
+    const NavigationGoalService::Goal& external_goal)
+{
+    requested_goal.position = Eigen::Vector2f(external_goal.x, external_goal.y);
+    requested_goal.yaw = wrap_to_pi(external_goal.yaw);
+    has_requested_goal = true;
+    goal_warning_reported = false;
+    spdlog::info(
+        "External Navigation goal accepted: x={:.3f} m, y={:.3f} m, "
+        "yaw={:.3f} rad (relative to the entry pose).",
+        requested_goal.position.x(),
+        requested_goal.position.y(),
+        requested_goal.yaw
+    );
+}
+
 void State_Navigation::generate_trajectory(
-    const LocalizationPose& trajectory_origin_pose,
-    const LocalizationPose& target_pose,
-    float target_stand_off,
-    float target_yaw_offset,
-    const std::string& target_name)
+    const TrajectoryPose& external_goal)
 {
     const int motion_steps = static_cast<int>(std::lround(
         motion_duration / trajectory_step_dt
@@ -1107,32 +996,8 @@ void State_Navigation::generate_trajectory(
         trajectory_duration / trajectory_step_dt
     ));
 
-    // The approach heading points from the desired standing point to the target.
-    // Therefore the standing point is the configured distance along the
-    // negative approach axis, and the robot finishes facing the target.
-    const float target_approach_heading = wrap_to_pi(
-        target_pose.heading + target_yaw_offset
-    );
-    const Eigen::Vector2f approach_axis(
-        std::cos(target_approach_heading),
-        std::sin(target_approach_heading)
-    );
-    const Eigen::Vector2f goal_world =
-        target_pose.position.head<2>()
-        - target_stand_off * approach_axis;
-    const Eigen::Vector2f goal_delta_world =
-        goal_world - trajectory_origin_pose.position.head<2>();
-    const float cos_robot_heading = std::cos(trajectory_origin_pose.heading);
-    const float sin_robot_heading = std::sin(trajectory_origin_pose.heading);
-    goal.position = Eigen::Vector2f(
-        cos_robot_heading * goal_delta_world.x()
-            + sin_robot_heading * goal_delta_world.y(),
-        -sin_robot_heading * goal_delta_world.x()
-            + cos_robot_heading * goal_delta_world.y()
-    );
-    goal.yaw = wrap_to_pi(
-        target_approach_heading - trajectory_origin_pose.heading
-    );
+    goal = external_goal;
+    goal.yaw = wrap_to_pi(goal.yaw);
 
     trajectory_poses.assign(episode_steps + 1, TrajectoryPose{});
     trajectory_progresses.assign(episode_steps + 1, 0.0f);
@@ -1174,7 +1039,7 @@ void State_Navigation::generate_trajectory(
 
     // A cubic Bezier curve honors both the robot's initial forward direction
     // and the final approach direction. This replaces the old random endpoint
-    // with a smooth path whose endpoint is exactly in front of the box.
+    // with a smooth path whose endpoint is exactly the externally supplied goal.
     const Eigen::Vector2f start_position = Eigen::Vector2f::Zero();
     const float direct_distance = goal.position.norm();
     const float tangent_length = path_tangent_scale * direct_distance;
@@ -1242,13 +1107,8 @@ void State_Navigation::generate_trajectory(
     trajectory_started_at = std::chrono::steady_clock::now();
     write_target_path_log();
     spdlog::info(
-        "Navigation target {} received at "
-        "(x={:.3f}, y={:.3f}, yaw={:.3f}); generated front goal="
+        "Generated Navigation path to external goal "
         "(x={:.3f}, y={:.3f}, yaw={:.3f}).",
-        target_name,
-        target_pose.position.x(),
-        target_pose.position.y(),
-        target_pose.heading,
         goal.position.x(),
         goal.position.y(),
         goal.yaw
@@ -1296,6 +1156,23 @@ std::size_t State_Navigation::offset_trajectory_index(
 
 void State_Navigation::update_navigation_state()
 {
+    NavigationGoalService::Goal updated_goal;
+    if (navigation_service &&
+        navigation_service->consume_navigation_goal(updated_goal)) {
+        set_requested_goal(updated_goal);
+        reset_navigation_state();
+        spdlog::info("Navigation trajectory restarted from the current pose.");
+    }
+    if (!has_requested_goal) {
+        command = {0.0f, 0.0f, 0.0f};
+        set_safe_stand_observations();
+        if (!goal_warning_reported) {
+            spdlog::warn("Navigation is waiting for an external x/y/yaw goal.");
+            goal_warning_reported = true;
+        }
+        return;
+    }
+
     LocalizationPose localization_pose;
     float odometry_age = 0.0f;
     std::string pose_source;
@@ -1340,85 +1217,10 @@ void State_Navigation::update_navigation_state()
     }
 
     if (!trajectory_initialized) {
-        LocalizationPose target_pose;
-        LocalizationPose trajectory_origin_pose;
-        const auto& selected_target_state = navigate_to_place_target
-            ? place_target_state
-            : target_state;
-        const std::string& selected_target_topic = navigate_to_place_target
-            ? place_target_state_topic
-            : target_state_topic;
-        std::string selected_target_name = navigate_to_place_target
-            ? "place_table"
-            : "carry_box";
-        float selected_stand_off = navigate_to_place_target
-            ? place_target_stand_off_distance
-            : target_stand_off_distance;
-        float selected_yaw_offset = navigate_to_place_target
-            ? place_target_approach_yaw_offset
-            : target_approach_yaw_offset;
-        const bool use_fixed_goal =
-            target_source == "fixed" ||
-            (target_source == "auto" && pose_source == "glim");
-        if (use_fixed_goal) {
-            const auto& fixed_goal = navigate_to_place_target
-                ? fixed_place_table_goal
-                : fixed_carry_box_goal;
-            const float cos_heading = std::cos(localization_pose.heading);
-            const float sin_heading = std::sin(localization_pose.heading);
-            target_pose.position = localization_pose.position;
-            target_pose.position.x() +=
-                cos_heading * fixed_goal[0] - sin_heading * fixed_goal[1];
-            target_pose.position.y() +=
-                sin_heading * fixed_goal[0] + cos_heading * fixed_goal[1];
-            target_pose.heading = wrap_to_pi(
-                localization_pose.heading + fixed_goal[2]
-            );
-            target_pose.orientation = Eigen::Quaternionf(
-                Eigen::AngleAxisf(target_pose.heading, Eigen::Vector3f::UnitZ())
-            );
-            trajectory_origin_pose = localization_pose;
-            selected_stand_off = 0.0f;
-            selected_yaw_offset = 0.0f;
-            selected_target_name = navigate_to_place_target
-                ? "fixed place_table goal"
-                : "fixed carry_box goal";
-            spdlog::info(
-                "Navigation fixed goal relative to entry pose: "
-                "x={:.3f} m, y={:.3f} m, yaw={:.3f} rad.",
-                fixed_goal[0], fixed_goal[1], fixed_goal[2]
-            );
-        } else {
-            if (!read_target_pose(selected_target_state, target_pose) ||
-                !read_simulator_pose(trajectory_origin_pose)) {
-                command = {0.0f, 0.0f, 0.0f};
-                set_safe_stand_observations();
-                if (!target_warning_reported) {
-                    spdlog::warn(
-                        "Navigation is waiting for fresh simulator robot and "
-                        "target poses on {} and {}.",
-                        simulator_state_topic,
-                        selected_target_topic
-                    );
-                    target_warning_reported = true;
-                }
-                return;
-            }
-            if (target_warning_reported) {
-                spdlog::info("Navigation simulator target pose is available.");
-                target_warning_reported = false;
-            }
-        }
         active_localization_source = pose_source;
         initial_odometry_position = localization_pose.position.head<2>();
         initial_odometry_heading = localization_pose.heading;
-        generate_trajectory(
-            trajectory_origin_pose,
-            target_pose,
-            selected_stand_off,
-            selected_yaw_offset,
-            selected_target_name
-        );
+        generate_trajectory(requested_goal);
         trajectory_initialized = true;
         spdlog::info(
             "Navigation path frame initialized from {} pose "

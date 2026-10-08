@@ -10,22 +10,13 @@ v2_path/exported/policy.onnx
 The wrist-pitch action scale in this directory includes the arm-up tracking
 fix. Do not replace its ONNX file with a policy trained using the old scale.
 
-On the first Navigation entry, deploy snapshots the `carry_box` pose from
-`rt/navigation/target_pose` and approaches its front. When an OnlineMimic
-motion entered from Navigation finishes, the next Navigation entry switches to
-the empty `place_table` pose from `rt/navigation/place_target_pose` and retains
-the motion's final arm pose while walking there. The current scene/config
-produces pickup goal `(0.62, 0.0, 0.0)` and place-table goal approximately
-`(0.2, 0.62, pi/2)` in MuJoCo world coordinates. Stand-off distances and
-approach-face yaw offsets are configurable independently.
-
-On the real robot, `target_source: auto` selects fixed goals when GLIM is the
-active localization source. The first Navigation entry goes 1 m forward with
-no yaw change. After the lift motion, the next entry goes 1 m left and finishes
-at +90 degrees, while retaining the lifted arm pose. Both offsets are relative
-to the robot pose captured on that Navigation entry and can be changed with
-`fixed_carry_box_goal` and `fixed_place_table_goal`. Set `target_source` to
-`fixed` or `simulator` to override automatic selection.
+Navigation goals are supplied through `send_navigation_goal.py` as `x y yaw`.
+They are interpreted in the robot frame captured when the goal starts: +x is
+forward, +y is left, and yaw is in radians. A goal sent from Velocity or a
+finished/holding OnlineMimic automatically enters Navigation. A goal sent while
+Navigation is active restarts the trajectory from the current pose. The arm
+command is initialized from the measured arm angles immediately before entry,
+so a lifted pose is retained without distinguishing pickup/place iterations.
 
 The generated target path is written to `log/navigation_target_path.csv` and
 the measured robot path to `log/navigation_pose.csv`.

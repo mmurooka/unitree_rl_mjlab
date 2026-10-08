@@ -20,6 +20,7 @@
 #endif
 
 #include "FSM/FSMState.h"
+#include "NavigationGoalService.h"
 #include "isaaclab/envs/manager_based_rl_env.h"
 
 class State_Navigation : public FSMState
@@ -64,20 +65,13 @@ private:
         LocalizationPose& pose,
         float& age_seconds) const;
     bool read_simulator_pose(LocalizationPose& pose);
-    bool read_target_pose(
-        const unitree::robot::go2::subscription::SportModeState::SharedPtr& state,
-        LocalizationPose& pose);
     bool read_localization_pose(
         LocalizationPose& pose,
         std::string& source,
         float& age_seconds);
     void reset_navigation_state();
-    void generate_trajectory(
-        const LocalizationPose& trajectory_origin_pose,
-        const LocalizationPose& target_pose,
-        float target_stand_off,
-        float target_yaw_offset,
-        const std::string& target_name);
+    void generate_trajectory(const TrajectoryPose& requested_goal);
+    void set_requested_goal(const NavigationGoalService::Goal& goal);
     std::size_t closest_trajectory_index(const Eigen::Vector2f& position) const;
     std::size_t offset_trajectory_index(
         std::size_t reference_index,
@@ -125,8 +119,7 @@ private:
     bool has_odometry{false};
 #endif
     unitree::robot::go2::subscription::SportModeState::SharedPtr simulator_state;
-    unitree::robot::go2::subscription::SportModeState::SharedPtr target_state;
-    unitree::robot::go2::subscription::SportModeState::SharedPtr place_target_state;
+    std::shared_ptr<NavigationGoalService> navigation_service;
 
     mutable std::mutex joint_command_mutex;
     std::vector<float> latest_policy_action;
@@ -135,7 +128,6 @@ private:
     std::vector<int> arm_command_joint_ids;
     std::vector<float> arm_down_pose;
     std::vector<float> arm_up_pose;
-    std::vector<float> carried_arm_pose;
     std::vector<std::vector<float>> random_arm_poses;
     std::vector<std::size_t> random_arm_pose_order;
     std::vector<float> arm_pose_after_down;
@@ -155,8 +147,8 @@ private:
     float initial_odometry_heading{0.0f};
     bool trajectory_initialized{false};
     bool localization_warning_reported{false};
-    bool target_warning_reported{false};
-    bool navigate_to_place_target{false};
+    bool goal_warning_reported{false};
+    bool has_requested_goal{false};
     bool goal_reached{false};
     std::array<float, 3> command{0.0f, 0.0f, 0.0f};
     std::array<float, 6> marker_pose_camera{0.0f, 0.0f, 0.0f, 0.0f, 0.0f, -1.0f};
@@ -180,21 +172,10 @@ private:
 
     std::string localization_source{"auto"};
     std::string active_localization_source;
-    std::string target_source{"auto"};
     std::string odometry_topic{"/glim_ros/odom"};
     std::string simulator_state_topic{"rt/sportmodestate"};
-    std::string target_state_topic{"rt/navigation/target_pose"};
-    std::string place_target_state_topic{"rt/navigation/place_target_pose"};
-    std::array<float, 3> fixed_carry_box_goal{1.0f, 0.0f, 0.0f};
-    std::array<float, 3> fixed_place_table_goal{
-        0.0f, 1.0f, 1.57079632679f
-    };
     float odometry_timeout{0.5f};
-    float target_pose_timeout{0.5f};
-    float target_stand_off_distance{0.7f};
-    float target_approach_yaw_offset{0.0f};
-    float place_target_stand_off_distance{0.7f};
-    float place_target_approach_yaw_offset{0.0f};
+    TrajectoryPose requested_goal;
     TrajectoryPose goal;
 
     std::array<float, 2> reference_times{1.0f, 2.0f};

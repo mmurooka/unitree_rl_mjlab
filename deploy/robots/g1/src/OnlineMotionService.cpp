@@ -79,7 +79,6 @@ std::shared_ptr<OnlineMotionService::Request> OnlineMotionService::activate_mimi
     std::lock_guard<std::mutex> lock(mutex_);
     if (!transitioning_ || !request_) return nullptr;
     source_mode = transition_source_;
-    mimic_source_ = source_mode;
     transitioning_ = false;
     transition_source_ = Mode::Inactive;
     mode_ = Mode::Mimic;
@@ -145,29 +144,10 @@ void OnlineMotionService::reject(const std::shared_ptr<Request>& request, const 
     accepting_ = mode_ != Mode::Inactive;
 }
 
-void OnlineMotionService::finished(const Eigen::VectorXf& final_joint_pose)
+void OnlineMotionService::finished()
 {
     std::lock_guard<std::mutex> lock(mutex_);
-    if (mode_ == Mode::Mimic && !request_) {
-        accepting_ = true;
-        if (mimic_source_ == Mode::Navigation) {
-            completed_navigation_motion_ = true;
-            completed_navigation_joint_pose_ = final_joint_pose;
-        }
-    }
-}
-
-bool OnlineMotionService::consume_completed_navigation_motion(
-    Eigen::VectorXf& final_joint_pose)
-{
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (!completed_navigation_motion_) {
-        return false;
-    }
-    final_joint_pose = completed_navigation_joint_pose_;
-    completed_navigation_motion_ = false;
-    completed_navigation_joint_pose_.resize(0);
-    return true;
+    if (mode_ == Mode::Mimic && !request_) accepting_ = true;
 }
 
 std::string OnlineMotionService::start_error(const Request& request, const Eigen::VectorXf& actual) const

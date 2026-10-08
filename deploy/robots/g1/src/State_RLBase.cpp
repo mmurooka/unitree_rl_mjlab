@@ -1,4 +1,5 @@
 #include "FSM/State_RLBase.h"
+#include "NavigationGoalService.h"
 #include "OnlineMotionService.h"
 #include "unitree_articulation.h"
 #include "isaaclab/envs/mdp/observations/observations.h"
@@ -51,24 +52,41 @@ State_RLBase::State_RLBase(int state_mode, std::string state_string)
         )
     );
 
-    if (state_string == "Velocity" && online_motion_service &&
-        FSMStringMap.right.count("OnlineMimic")) {
-        const auto service = online_motion_service;
-        on_enter_ = [service] { service->activate_velocity(); };
-        on_exit_ = [service] { service->leave_velocity(); };
-        // Keep normal joystick control and existing user/safety transition priority.
-        registered_checks.emplace_back([service] {
-            Eigen::VectorXf actual(29);
-            {
-                std::lock_guard<std::mutex> lock(FSMState::lowstate->mutex_);
-                for (int i = 0; i < 29; ++i) {
-                    actual[i] = FSMState::lowstate->msg_.motor_state()[i].q();
+    if (state_string == "Velocity") {
+        const auto motion_service = online_motion_service;
+        const auto goal_service = navigation_goal_service;
+        on_enter_ = [motion_service, goal_service] {
+            if (motion_service) motion_service->activate_velocity();
+            if (goal_service) goal_service->activate_velocity();
+        };
+        on_exit_ = [motion_service, goal_service] {
+            if (motion_service) motion_service->leave_velocity();
+            if (goal_service) goal_service->leave_velocity();
+        };
+
+        if (motion_service && FSMStringMap.right.count("OnlineMimic")) {
+            // Keep normal joystick and safety transitions ahead of online requests.
+            registered_checks.emplace_back([motion_service] {
+                Eigen::VectorXf actual(29);
+                {
+                    std::lock_guard<std::mutex> lock(FSMState::lowstate->mutex_);
+                    for (int i = 0; i < 29; ++i) {
+                        actual[i] =
+                            FSMState::lowstate->msg_.motor_state()[i].q();
+                    }
                 }
-            }
-            return service->transition_ready(
-                OnlineMotionService::Mode::Velocity, actual
-            );
-        }, FSMStringMap.right.at("OnlineMimic"));
+                return motion_service->transition_ready(
+                    OnlineMotionService::Mode::Velocity, actual
+                );
+            }, FSMStringMap.right.at("OnlineMimic"));
+        }
+        if (goal_service && FSMStringMap.right.count("Navigation")) {
+            registered_checks.emplace_back([goal_service] {
+                return goal_service->transition_ready(
+                    NavigationGoalService::Mode::Velocity
+                );
+            }, FSMStringMap.right.at("Navigation"));
+        }
     }
 }
 
