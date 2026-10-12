@@ -40,18 +40,20 @@ for the flat environment. The table scene includes that same flat scene, so
 robot and sensor definitions remain shared.
 
 Each fixed table has a 0.40 × 0.55 m tabletop, 25 mm thick, supported by four
-cylindrical legs of radius 20 mm. The top surface is 0.5732 m above the floor.
+cylindrical legs of radius 20 mm. The top surface is 0.560 m above the floor.
 Relative to the robot origin, the pickup table center is `(1.0, 0, 0)`
 (1 m forward), and the destination table center is `(0.2, 1.0, 0)` (0.2 m forward, 1 m left).
 The destination table is rotated 90 degrees counterclockwise about the vertical
 axis. The robot must approach the pickup table before lifting the box.
 
 The box is a free body with contact only (no attachment or scripted motion).
-Its full dimensions are 0.25 × 0.35 × 0.20 m (x/y/z), with mass 0.5 kg.
-The width matches `task_prompt.box.grip_width` in TaskPromptRL's default
-`config/g1_reference_motion.yaml`; depth, height, mass, and friction are provisional.
-Its initial center is `(0.9460365, 0, 0.6752)`, preserving its offset on the
-pickup table with 2 mm clearance above the tabletop.
+Its body dimensions are fixed at 0.26 × 0.35 × 0.19 m (x/y/z), matching the
+physical box. The body mass is 0.1 kg. A rigid 0.26 × 0.42 × 0.015 m top plate
+(mass 0.03 kg) has the same depth as the box and a 35 mm overhang on each
+side to support the hands through contact.
+Its initial center is `(0.87, 0, 0.657)`, with 2 mm clearance above the tabletop.
+For reference generation, use `task_prompt.box.size=[0.26,0.35,0.19]`;
+`task_prompt.box.grip_width_offset=-0.02` targets a 0.33 m hand spacing.
 Positions and geometry dimensions can be edited directly in the scene XML;
 MuJoCo box `size` values are half dimensions.
 
