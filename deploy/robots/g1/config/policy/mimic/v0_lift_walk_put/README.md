@@ -1,4 +1,4 @@
-# lift_walk_put tracking policy
+# lift_walk_put v0 tracking policy
 
 Source training run: `logs/rsl_rl/g1_tracking/2026-09-16_23-43-59`.
 
