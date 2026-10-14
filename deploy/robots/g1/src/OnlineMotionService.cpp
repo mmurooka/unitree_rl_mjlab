@@ -1,4 +1,6 @@
 #include "OnlineMotionService.h"
+#include <iomanip>
+#include <sstream>
 
 std::shared_ptr<OnlineMotionService> online_motion_service;
 
@@ -182,6 +184,26 @@ void OnlineMotionService::receive()
         if (command == "STATUS") {
             std::lock_guard<std::mutex> lock(mutex_);
             reply = status_locked();
+        } else if (command == "JOINT_POSITIONS") {
+            std::lock_guard<std::mutex> lock(mutex_);
+            reply = status_locked();
+            if (reply == "READY") {
+                auto state = FSMState::lowstate;
+                if (!state || state->isTimeout()) {
+                    reply = "ERROR measured joint positions unavailable";
+                } else {
+                    std::lock_guard<std::mutex> state_lock(state->mutex_);
+                    std::ostringstream result;
+                    result << std::setprecision(9) << "JOINT_POSITIONS";
+                    bool valid = true;
+                    for (int i = 0; i < 29; ++i) {
+                        const float q = state->msg_.motor_state()[i].q();
+                        valid = valid && std::isfinite(q);
+                        result << " " << q;
+                    }
+                    reply = valid ? result.str() : "ERROR non-finite joint positions";
+                }
+            }
         } else if (command.rfind("LOAD\n", 0) == 0) {
             std::shared_ptr<Request> request;
             {
@@ -208,7 +230,7 @@ void OnlineMotionService::receive()
                 reply = result.get();
             }
         } else {
-            reply = "ERROR expected STATUS or LOAD";
+            reply = "ERROR expected STATUS, JOINT_POSITIONS or LOAD";
         }
         socket_.send(zmq::buffer(reply), zmq::send_flags::none);
     }

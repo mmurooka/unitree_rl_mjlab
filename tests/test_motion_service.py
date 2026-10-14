@@ -37,6 +37,35 @@ class FakeConverter:
 
 
 class ServiceTests(unittest.TestCase):
+    def test_joint_positions_never_write_a_snapshot(self):
+        with tempfile.TemporaryDirectory() as folder, zmq.Context() as context:
+            endpoint = 'ipc://' + folder + '/query.sock'
+            c = FakeConverter()
+            service = MotionService(c, 'unused', debug_dir=folder + '/debug')
+            stop = threading.Event()
+            reply = 'JOINT_POSITIONS ' + ' '.join(str(i / 10) for i in range(29))
+            with patch('serve_motion_prompt.deploy_request', return_value=reply) as deploy:
+                thread = threading.Thread(target=service.serve, args=(endpoint, stop))
+                thread.start()
+                try:
+                    with context.socket(zmq.REQ) as socket:
+                        socket.setsockopt(zmq.LINGER, 0)
+                        socket.setsockopt(zmq.RCVTIMEO, 5000)
+                        socket.connect(endpoint)
+                        for expected, response in [('OK', reply), ('BUSY', 'BUSY'), ('ERROR', 'JOINT_POSITIONS nan')]:
+                            deploy.return_value = response
+                            socket.send(b'JOINT_POSITIONS')
+                            result = socket.recv_json()
+                            self.assertEqual(result['status'], expected)
+                            if expected == 'OK':
+                                np.testing.assert_allclose(result['joint_positions'], np.arange(29) / 10)
+                    self.assertEqual(list(Path(folder, 'debug').iterdir()), [])
+                    self.assertEqual(c.calls, 0)
+                    self.assertTrue(all(call.args[1] == 'JOINT_POSITIONS' for call in deploy.call_args_list))
+                finally:
+                    stop.set(); thread.join(5)
+                    self.assertFalse(thread.is_alive())
+
     def test_validation(self):
         validate_prompt(payload())
         with self.assertRaises(Exception):
@@ -90,6 +119,8 @@ class ServiceTests(unittest.TestCase):
                             sock.connect(endpoint)
                         first.send(payload())
                         self.assertTrue(converter.entered.wait(3))
+                        second.send(b'JOINT_POSITIONS')
+                        self.assertEqual(second.recv_json()['status'], 'BUSY')
                         second.send(payload())
                         self.assertEqual(second.recv_json()['status'], 'BUSY')
                         converter.proceed.set()
