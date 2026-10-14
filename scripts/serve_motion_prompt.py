@@ -67,6 +67,18 @@ class MotionService:
         self.debug_dir = Path(debug_dir)
         self.dofs = dofs
 
+    def joint_positions(self):
+        try:
+            reply = deploy_request(self.deploy_endpoint, "JOINT_POSITIONS")
+            if not reply.startswith("JOINT_POSITIONS "):
+                return {"status": "BUSY" if reply == "BUSY" else "ERROR", "message": reply}
+            joints = [float(value) for value in reply.split()[1:]]
+            if len(joints) != self.dofs or not np.isfinite(joints).all():
+                raise ValueError("Invalid measured joint positions")
+            return {"status": "OK", "joint_positions": joints}
+        except Exception as error:
+            return {"status": "ERROR", "message": str(error)}
+
     def execute(self, input_path: Path, output_path: Path):
         try:
             status = deploy_request(self.deploy_endpoint, "STATUS")
@@ -94,7 +106,7 @@ class MotionService:
         if self.save_debug:
             self.debug_dir.mkdir(parents=True, exist_ok=True)
         # ROUTER permits BUSY replies while the single converter is occupied.
-        # The client still sends exactly one NPZ as a standard REQ request.
+        # Each REQ carries one NPZ or a read-only joint-position query.
         with (
             zmq.Context() as context,
             context.socket(zmq.ROUTER) as socket,
@@ -121,6 +133,12 @@ class MotionService:
                     if len(parts) != 3 or parts[1] != b"":
                         continue
                     address, payload = parts[:2], parts[2]
+                    if payload == b"JOINT_POSITIONS":
+                        if pending is not None:
+                            socket.send_multipart(address + [b'{"status":"BUSY"}'])
+                        else:
+                            pending = (executor.submit(self.joint_positions), address, None)
+                        continue
                     temporary = None
                     if self.save_debug:
                         folder = Path(
