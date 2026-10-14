@@ -48,3 +48,13 @@ d435:
   publish_pointcloud: true
   pointcloud_downsample: 2
   topic_root: "/camera/camera"
+
+# Named MuJoCo body poses relative to the robot. Each /frame_pose_list entry
+# contains frame_name and rel_pose=[x,y,z,qx,qy,qz,qw].
+frame_pose_list:
+  enabled: true
+  topic: "/frame_pose_list"
+  # Positions are expressed in a gravity-aligned frame at this site, using
+  # only the robot yaw so they match the Navigation goal convention.
+  reference_site: "imu"
+  publish_frequency: 20

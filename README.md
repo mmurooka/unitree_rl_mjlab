@@ -216,12 +216,14 @@ The G1 controller also includes navigation policies under
 - `L2 + B`: return to Passive
 
 Navigation is started externally with TaskPromptRL's
-`scripts/send_navigation_goal.py`. Its positional arguments are `x y yaw` in
-the robot frame captured when the goal starts: +x is forward, +y is left, and
-yaw is in radians. For example, `1 0 0` moves 1 m forward and `0 1 1.5708`
-moves 1 m left while turning left. Sending from Velocity or a finished/holding
-OnlineMimic automatically enters Navigation; sending during Navigation replaces
-the active goal. OnlineMimic reports `BUSY` until its motion has finished.
+`scripts/send_navigation_goal.py`. In simulation, MuJoCo publishes named body
+poses relative to the robot on `/frame_pose_list`. The script selects a
+`frame_name` and generates a goal `offset` metres before its local +x-facing
+side, with the goal yaw matching the frame yaw. For example, `carry_box 0.7`
+stops 0.7 m before `carry_box`. Sending from
+Velocity or a finished/holding OnlineMimic automatically enters Navigation;
+sending during Navigation replaces the active goal. OnlineMimic reports `BUSY`
+until its motion has finished.
 Navigation captures the measured arm joint angles immediately before entry and
 uses them as its arm command, preserving a lifted posture without pickup/place
 iteration state.
@@ -319,15 +321,22 @@ cp logs/rsl_rl/g1_navigation/<run>/policy.onnx deploy/robots/g1/config/policy/na
 `v2_path` uses the corrected Navigation wrist-pitch action scale. Do not
 replace its ONNX file with a policy trained using the old scale.
 
-From the TaskPromptRL repository, send a goal after the controller is running:
+From the TaskPromptRL repository, select a simulated frame after the simulator
+and controller are running:
 
 ```bash
-python scripts/send_navigation_goal.py 1.0 0.0 0.0
+source /opt/ros/jazzy/setup.bash
+source venv-tprl/bin/activate
+python scripts/send_navigation_goal.py carry_box 0.7
 ```
 
-The controller generates a path whose terminal position and yaw match the
-external goal. The path is anchored to the localization pose captured when the
-goal starts. At each policy step,
+`/frame_pose_list` uses `std_msgs/msg/String` with a JSON payload. Each element
+has `frame_name` and
+`rel_pose=[x,y,z,qx,qy,qz,qw]`. All named non-robot MuJoCo bodies are included,
+so newly added scene objects are selectable without a per-object publisher.
+No separate approach-direction metadata is used: the selected frame's yaw
+defines its front. The controller path is anchored to the localization pose
+captured when the goal starts. At each policy step,
 the closest sampled path point becomes the reference. The one- and two-second
 lookaheads are index offsets computed from `reference_times / step_dt`; offsets
 beyond the path remain at the terminal goal.

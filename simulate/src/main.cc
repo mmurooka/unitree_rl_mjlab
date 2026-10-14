@@ -36,6 +36,7 @@
 #include "param.h"
 #ifdef UNITREE_MJLAB_HAS_ROS2
 #include "d435_simulator.h"
+#include "frame_pose_publisher.h"
 #include "mid360_simulator.h"
 #endif
 
@@ -106,6 +107,7 @@ namespace
 #ifdef UNITREE_MJLAB_HAS_ROS2
   std::unique_ptr<Mid360Simulator> mid360;
   std::unique_ptr<D435Simulator> d435;
+  std::unique_ptr<FramePosePublisher> frame_pose_publisher;
   std::mutex ros_sensor_mutex;
 #endif
 
@@ -115,6 +117,12 @@ namespace
     std::lock_guard<std::mutex> lock(ros_sensor_mutex);
     d435.reset();
     mid360.reset();
+    frame_pose_publisher.reset();
+    if (m && param::config.enable_frame_pose_list)
+    {
+      // Create this first so it owns the shared ROS context and is destroyed last.
+      frame_pose_publisher = std::make_unique<FramePosePublisher>(m);
+    }
     if (m && param::config.enable_mid360)
     {
       mid360 = std::make_unique<Mid360Simulator>(m, param::config.mid360_scan_pattern.c_str());
@@ -128,6 +136,10 @@ namespace
     {
       std::cerr << "MID-360 requested, but this executable was built without ROS 2 support\n";
     }
+    if (param::config.enable_frame_pose_list)
+    {
+      std::cerr << "Frame pose list requested, but this executable was built without ROS 2 support\n";
+    }
 #endif
   }
 
@@ -138,6 +150,10 @@ namespace
     if (mid360)
     {
       mid360->advance(m, d);
+    }
+    if (frame_pose_publisher)
+    {
+      frame_pose_publisher->advance(m, d);
     }
 #endif
   }
@@ -614,6 +630,7 @@ void PhysicsThread(mj::Simulate *sim, const char *filename)
     std::lock_guard<std::mutex> lock(ros_sensor_mutex);
     d435.reset();
     mid360.reset();
+    frame_pose_publisher.reset();
   }
 #endif
   free(ctrlnoise);

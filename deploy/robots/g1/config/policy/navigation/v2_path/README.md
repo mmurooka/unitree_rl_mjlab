@@ -10,11 +10,12 @@ v2_path/exported/policy.onnx
 The wrist-pitch action scale in this directory includes the arm-up tracking
 fix. Do not replace its ONNX file with a policy trained using the old scale.
 
-Navigation goals are supplied through `send_navigation_goal.py` as `x y yaw`.
-They are interpreted in the robot frame captured when the goal starts: +x is
-forward, +y is left, and yaw is in radians. A goal sent from Velocity or a
-finished/holding OnlineMimic automatically enters Navigation. A goal sent while
-Navigation is active restarts the trajectory from the current pose. The arm
+In simulation, `send_navigation_goal.py` selects a `frame_name` from
+`/frame_pose_list` and takes an `offset` in metres. It places the goal on the
+selected frame's local +x axis, `offset` metres before it, with the goal yaw
+matching the frame yaw. A goal sent from Velocity or a finished/holding OnlineMimic
+automatically enters Navigation. A goal sent while Navigation is active
+restarts the trajectory from the current pose. The arm
 command is initialized from the measured arm angles immediately before entry,
 so a lifted pose is retained without distinguishing pickup/place iterations.
 
