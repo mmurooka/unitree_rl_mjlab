@@ -1,0 +1,11 @@
+# 15 cm square on the box -x face. Printed x=-object_y, y=object_z.
+v 0  0.075 -0.075
+v 0 -0.075 -0.075
+v 0 -0.075  0.075
+v 0  0.075  0.075
+vt 0 0
+vt 1 0
+vt 1 1
+vt 0 1
+f 1/1 2/2 3/3
+f 1/1 3/3 4/4

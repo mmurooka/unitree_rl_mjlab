@@ -49,8 +49,10 @@ inline struct SimulationConfig
     std::string d435_topic_root = "/camera/camera";
 
     bool enable_frame_pose_list = false;
+    std::string frame_pose_source = "ground_truth";
     std::string frame_pose_topic = "/frame_pose_list";
     std::string frame_pose_reference_site = "imu";
+    std::string frame_pose_reference_frame = "imu_yaw";
     double frame_pose_publish_frequency = 20.0;
 
     void load_from_yaml(const std::string &filename)
@@ -98,8 +100,10 @@ inline struct SimulationConfig
             if (const auto frame_poses = cfg["frame_pose_list"])
             {
                 enable_frame_pose_list = frame_poses["enabled"].as<bool>(false);
+                frame_pose_source = frame_poses["source"].as<std::string>(frame_pose_source);
                 frame_pose_topic = frame_poses["topic"].as<std::string>(frame_pose_topic);
                 frame_pose_reference_site = frame_poses["reference_site"].as<std::string>(frame_pose_reference_site);
+                frame_pose_reference_frame = frame_poses["reference_frame"].as<std::string>(frame_pose_reference_frame);
                 frame_pose_publish_frequency = frame_poses["publish_frequency"].as<double>(frame_pose_publish_frequency);
             }
         }

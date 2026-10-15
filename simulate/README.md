@@ -46,6 +46,12 @@ Relative to the robot origin, the pickup table center is `(1.0, 0, 0)`
 The destination table is rotated 90 degrees counterclockwise about the vertical
 axis. The robot must approach the pickup table before lifting the box.
 
+The scene also includes ArUco ID 0 on the robot-facing side of the box and IDs
+1 and 2 on top of the pickup and destination tables. `frame_pose_list.source`
+in `config.yaml` selects either MuJoCo `ground_truth` or the `aruco` image
+pipeline. See [`../aruco/README.md`](../aruco/README.md) for setup and real-camera
+configuration.
+
 The box is a free body with contact only (no attachment or scripted motion).
 Its body dimensions are fixed at 0.26 × 0.35 × 0.19 m (x/y/z), matching the
 physical box. The body mass is 0.1 kg. A rigid 0.26 × 0.42 × 0.015 m top plate

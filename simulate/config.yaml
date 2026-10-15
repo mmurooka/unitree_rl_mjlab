@@ -53,8 +53,45 @@ d435:
 # contains frame_name and rel_pose=[x,y,z,qx,qy,qz,qw].
 frame_pose_list:
   enabled: true
+  # "ground_truth" publishes MuJoCo body poses. "aruco" disables that
+  # publisher and lets aruco/frame_pose_publisher.py own the same topic.
+  source: "aruco"
   topic: "/frame_pose_list"
   # Positions are expressed in a gravity-aligned frame at this site, using
   # only the robot yaw so they match the Navigation goal convention.
   reference_site: "imu"
+  reference_frame: "imu_yaw"
   publish_frequency: 20
+
+  aruco:
+    image_topic: "/camera/camera/color/image_raw"
+    camera_info_topic: "/camera/camera/color/camera_info"
+    # Leave camera_frame empty to use the Image header. The simulator publishes
+    # imu_yaw -> camera_link dynamically and the optical transforms statically.
+    camera_frame: ""
+    dictionary: "DICT_4X4_50"
+    tf_timeout: 0.1
+    # If TF is unavailable on the real robot, set use_tf to false and fill in
+    # the calibrated [x,y,z,qx,qy,qz,qw] pose of the camera in reference_frame.
+    use_tf: true
+    static_reference_to_camera: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+    markers:
+      0:
+        frame_name: "carry_box"
+        marker_size: 0.12
+        # Pose of the marker coordinate frame in the object's frame.
+        object_to_marker:
+          translation: [-0.1305, 0.0, 0.0]
+          rotation_xyzw: [0.5, -0.5, -0.5, 0.5]
+      1:
+        frame_name: "pickup_table"
+        marker_size: 0.12
+        object_to_marker:
+          translation: [0.0, 0.0, 0.5605]
+          rotation_xyzw: [0.0, 0.0, 0.0, 1.0]
+      2:
+        frame_name: "place_table"
+        marker_size: 0.12
+        object_to_marker:
+          translation: [0.0, 0.0, 0.5605]
+          rotation_xyzw: [0.0, 0.0, 0.0, 1.0]

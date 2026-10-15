@@ -1,6 +1,16 @@
 <mujoco model="scene_g1_table_box">
   <!-- Reuse the flat scene, including the robot, sensors, and floor. -->
   <include file="scene_g1.xml"/>
+  <asset>
+    <texture name="aruco_marker_0_texture" type="2d" file="assets/aruco_marker_0.png"/>
+    <texture name="aruco_marker_1_texture" type="2d" file="assets/aruco_marker_1.png"/>
+    <texture name="aruco_marker_2_texture" type="2d" file="assets/aruco_marker_2.png"/>
+    <material name="aruco_marker_0_material" texture="aruco_marker_0_texture" specular="0" shininess="0"/>
+    <material name="aruco_marker_1_material" texture="aruco_marker_1_texture" specular="0" shininess="0"/>
+    <material name="aruco_marker_2_material" texture="aruco_marker_2_texture" specular="0" shininess="0"/>
+    <mesh name="aruco_top_mesh" file="aruco_top.obj" inertia="shell"/>
+    <mesh name="aruco_box_side_mesh" file="aruco_box_side.obj" inertia="shell"/>
+  </asset>
   <worldbody>
     <!-- Tabletop: 0.40 x 0.55 x 0.025 m; top surface z = 0.560 m. -->
     <body name="pickup_table" pos="1.0 0 0">
@@ -9,6 +19,9 @@
       <geom name="pickup_table_leg_2" type="cylinder" pos="-0.16 0.235 0.2675" size="0.02 0.2675" rgba="0.35 0.35 0.38 1"/>
       <geom name="pickup_table_leg_3" type="cylinder" pos="0.16 -0.235 0.2675" size="0.02 0.2675" rgba="0.35 0.35 0.38 1"/>
       <geom name="pickup_table_leg_4" type="cylinder" pos="0.16 0.235 0.2675" size="0.02 0.2675" rgba="0.35 0.35 0.38 1"/>
+      <!-- ID 1: top-facing 12 cm marker with a 1.5 cm white quiet zone. -->
+      <geom name="pickup_table_aruco" type="mesh" mesh="aruco_top_mesh" pos="0 0 0.5605"
+            material="aruco_marker_1_material" contype="0" conaffinity="0" density="0" group="1"/>
     </body>
     <body name="place_table" pos="0.2 1.0 0" euler="0 0 1.5707963267948966">
       <geom name="place_table_top" type="box" pos="0 0 0.5475" size="0.20 0.275 0.0125" rgba="0.65 0.45 0.25 1" friction="0.8 0.005 0.0001"/>
@@ -16,6 +29,9 @@
       <geom name="place_table_leg_2" type="cylinder" pos="-0.16 0.235 0.2675" size="0.02 0.2675" rgba="0.35 0.35 0.38 1"/>
       <geom name="place_table_leg_3" type="cylinder" pos="0.16 -0.235 0.2675" size="0.02 0.2675" rgba="0.35 0.35 0.38 1"/>
       <geom name="place_table_leg_4" type="cylinder" pos="0.16 0.235 0.2675" size="0.02 0.2675" rgba="0.35 0.35 0.38 1"/>
+      <!-- ID 2: top-facing marker. It follows the table body's yaw. -->
+      <geom name="place_table_aruco" type="mesh" mesh="aruco_top_mesh" pos="0 0 0.5605"
+            material="aruco_marker_2_material" contype="0" conaffinity="0" density="0" group="1"/>
     </body>
     <!-- Box: 0.26 x 0.35 x 0.19 m, 0.1 kg; rigid top plate: 0.03 kg. -->
     <!-- Preserve the box offset on the pickup table, with 2 mm clearance. -->
@@ -24,6 +40,10 @@
       <geom name="carry_box_geom" type="box" size="0.13 0.175 0.095" mass="0.1" friction="3.0 0.5 0.0001" condim="4" rgba="0.3 0.65 0.35 1"/>
       <!-- A 3.5 cm overhang on each side supports the hands during transport. -->
       <geom name="carry_box_top_plate" type="box" pos="0 0 0.1025" size="0.13 0.21 0.0075" mass="0.03" friction="3.0 0.5 0.0001" condim="4" rgba="0.25 0.55 0.30 1"/>
+      <!-- ID 0: robot-facing (-x) side of the box. -->
+      <geom name="carry_box_aruco" type="mesh" mesh="aruco_box_side_mesh" pos="-0.1305 0 0"
+            material="aruco_marker_0_material"
+            contype="0" conaffinity="0" density="0" group="1"/>
     </body>
   </worldbody>
 </mujoco>

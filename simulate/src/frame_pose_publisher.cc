@@ -10,7 +10,9 @@
 #include <vector>
 
 #include <rclcpp/rclcpp.hpp>
+#include <geometry_msgs/msg/transform_stamped.hpp>
 #include <std_msgs/msg/string.hpp>
+#include <tf2_ros/transform_broadcaster.h>
 
 #include "param.h"
 
@@ -65,7 +67,9 @@ public:
   explicit Impl(const mjModel *model)
       : period_(1.0 / param::config.frame_pose_publish_frequency),
         reference_site_id_(mj_name2id(
-            model, mjOBJ_SITE, param::config.frame_pose_reference_site.c_str()))
+            model, mjOBJ_SITE, param::config.frame_pose_reference_site.c_str())),
+        camera_body_id_(mj_name2id(model, mjOBJ_BODY, "camera_link")),
+        publish_ground_truth_(param::config.frame_pose_source == "ground_truth")
   {
     if (param::config.frame_pose_topic.empty() ||
         param::config.frame_pose_publish_frequency <= 0.0)
@@ -77,6 +81,21 @@ public:
       throw std::runtime_error(
           "frame-pose-list reference site not found in MuJoCo model: " +
           param::config.frame_pose_reference_site);
+    }
+    if (param::config.frame_pose_source != "ground_truth" &&
+        param::config.frame_pose_source != "aruco")
+    {
+      throw std::runtime_error(
+          "frame-pose-list source must be 'ground_truth' or 'aruco': " +
+          param::config.frame_pose_source);
+    }
+    if (param::config.frame_pose_reference_frame.empty())
+    {
+      throw std::runtime_error("frame-pose-list reference frame must not be empty");
+    }
+    if (camera_body_id_ < 0 && param::config.frame_pose_source == "aruco")
+    {
+      throw std::runtime_error("camera_link body not found in MuJoCo model");
     }
 
     const int robot_root_body_id = model->site_bodyid[reference_site_id_];
@@ -99,21 +118,39 @@ public:
       owns_ros_context_ = true;
     }
     node_ = std::make_shared<rclcpp::Node>("unitree_mujoco_frame_pose_list");
-    publisher_ = node_->create_publisher<std_msgs::msg::String>(
-        param::config.frame_pose_topic, rclcpp::QoS(1));
+    camera_tf_broadcaster_ =
+        std::make_unique<tf2_ros::TransformBroadcaster>(node_);
+    if (publish_ground_truth_)
+    {
+      publisher_ = node_->create_publisher<std_msgs::msg::String>(
+          param::config.frame_pose_topic, rclcpp::QoS(1));
+    }
 
-    std::cout << "Frame pose list: publishing " << frames_.size()
-              << " non-robot MuJoCo bodies relative to "
-              << param::config.frame_pose_reference_site
-              << "'s gravity-aligned yaw frame on "
-              << param::config.frame_pose_topic << " at "
-              << param::config.frame_pose_publish_frequency << " Hz"
+    std::cout << "Frame pose list source: " << param::config.frame_pose_source;
+    if (publish_ground_truth_)
+    {
+      std::cout << "; publishing " << frames_.size()
+                << " non-robot MuJoCo bodies on "
+                << param::config.frame_pose_topic;
+    }
+    else
+    {
+      std::cout << "; MuJoCo truth publisher disabled";
+    }
+    if (camera_body_id_ >= 0)
+    {
+      std::cout << "; broadcasting "
+                << param::config.frame_pose_reference_frame
+                << " -> camera_link";
+    }
+    std::cout << " at " << param::config.frame_pose_publish_frequency << " Hz"
               << std::endl;
   }
 
   ~Impl()
   {
     publisher_.reset();
+    camera_tf_broadcaster_.reset();
     node_.reset();
     if (owns_ros_context_ && rclcpp::ok())
     {
@@ -168,11 +205,47 @@ public:
         0.0, 0.0, 1.0,
     };
 
+    if (camera_body_id_ >= 0)
+    {
+      const mjtNum *camera_world_position = data->xpos + 3 * camera_body_id_;
+      const mjtNum camera_world_delta[3] = {
+          camera_world_position[0] - reference_position[0],
+          camera_world_position[1] - reference_position[1],
+          camera_world_position[2] - reference_position[2],
+      };
+      mjtNum camera_relative_position[3];
+      mju_mulMatTVec3(
+          camera_relative_position, reference_yaw_rotation,
+          camera_world_delta);
+      mjtNum camera_relative_quaternion[4];
+      mju_mulQuat(
+          camera_relative_quaternion, inverse_reference_quaternion,
+          data->xquat + 4 * camera_body_id_);
+
+      geometry_msgs::msg::TransformStamped transform;
+      transform.header.stamp = node_->now();
+      transform.header.frame_id = param::config.frame_pose_reference_frame;
+      transform.child_frame_id = "camera_link";
+      transform.transform.translation.x = camera_relative_position[0];
+      transform.transform.translation.y = camera_relative_position[1];
+      transform.transform.translation.z = camera_relative_position[2];
+      transform.transform.rotation.w = camera_relative_quaternion[0];
+      transform.transform.rotation.x = camera_relative_quaternion[1];
+      transform.transform.rotation.y = camera_relative_quaternion[2];
+      transform.transform.rotation.z = camera_relative_quaternion[3];
+      camera_tf_broadcaster_->sendTransform(transform);
+    }
+
+    if (!publish_ground_truth_)
+    {
+      return;
+    }
+
     std::ostringstream json;
     json << std::setprecision(17)
          << "{\"stamp\":" << data->time
          << ",\"reference_frame\":\""
-         << JsonEscape(param::config.frame_pose_reference_site + "_yaw")
+         << JsonEscape(param::config.frame_pose_reference_frame)
          << "\",\"frame_pose_list\":[";
     bool first = true;
     for (const auto &[body_id, frame_name] : frames_)
@@ -230,12 +303,15 @@ public:
 private:
   double period_;
   int reference_site_id_;
+  int camera_body_id_;
+  bool publish_ground_truth_;
   double last_sim_time_ = -1.0;
   double next_publish_time_ = 0.0;
   bool owns_ros_context_ = false;
   std::vector<std::pair<int, std::string>> frames_;
   std::shared_ptr<rclcpp::Node> node_;
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr publisher_;
+  std::unique_ptr<tf2_ros::TransformBroadcaster> camera_tf_broadcaster_;
 };
 
 FramePosePublisher::FramePosePublisher(const mjModel *model)
