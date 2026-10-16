@@ -50,7 +50,9 @@ The scene also includes ArUco ID 0 on the robot-facing side of the box and IDs
 1 and 2 on top of the pickup and destination tables. `frame_pose_list.source`
 in `config.yaml` selects either MuJoCo `ground_truth` or the `aruco` image
 pipeline. See [`../aruco/README.md`](../aruco/README.md) for setup and real-camera
-configuration.
+configuration. In `aruco` mode, simulation truth is also published on the
+search-only `/frame_pose_list_ground_truth` topic so an initially hidden target
+can be brought into view before marker-based navigation starts.
 
 The box is a free body with contact only (no attachment or scripted motion).
 Its body dimensions are fixed at 0.26 × 0.35 × 0.19 m (x/y/z), matching the

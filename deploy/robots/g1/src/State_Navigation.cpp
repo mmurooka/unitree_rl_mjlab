@@ -974,19 +974,22 @@ void State_Navigation::set_requested_goal(
 {
     requested_goal.position = Eigen::Vector2f(external_goal.x, external_goal.y);
     requested_goal.yaw = wrap_to_pi(external_goal.yaw);
+    requested_marker_search = external_goal.marker_search;
     has_requested_goal = true;
     goal_warning_reported = false;
     spdlog::info(
         "External Navigation goal accepted: x={:.3f} m, y={:.3f} m, "
-        "yaw={:.3f} rad (relative to the entry pose).",
+        "yaw={:.3f} rad (relative to the entry pose, mode={}).",
         requested_goal.position.x(),
         requested_goal.position.y(),
-        requested_goal.yaw
+        requested_goal.yaw,
+        requested_marker_search ? "marker search" : "normal"
     );
 }
 
 void State_Navigation::generate_trajectory(
-    const TrajectoryPose& external_goal)
+    const TrajectoryPose& external_goal,
+    bool marker_search)
 {
     const int motion_steps = static_cast<int>(std::lround(
         motion_duration / trajectory_step_dt
@@ -1037,40 +1040,67 @@ void State_Navigation::generate_trajectory(
         parameter /= parameter_total;
     }
 
-    // A cubic Bezier curve honors both the robot's initial forward direction
-    // and the final approach direction. This replaces the old random endpoint
-    // with a smooth path whose endpoint is exactly the externally supplied goal.
-    const Eigen::Vector2f start_position = Eigen::Vector2f::Zero();
-    const float direct_distance = goal.position.norm();
-    const float tangent_length = path_tangent_scale * direct_distance;
-    const Eigen::Vector2f start_control(
-        tangent_length,
-        0.0f
-    );
-    const Eigen::Vector2f goal_control = goal.position - tangent_length *
-        Eigen::Vector2f(std::cos(goal.yaw), std::sin(goal.yaw));
+    if (marker_search) {
+        // Marker search is a reverse maneuver: body yaw and travel direction
+        // are opposite. Integrate a signed reverse velocity while interpolating
+        // body yaw explicitly, so positive yaw always turns left and negative
+        // yaw always turns right.
+        const float backoff_distance = std::max(0.0f, -goal.position.x());
+        trajectory_poses[0] = TrajectoryPose{};
+        for (int step = 0; step < motion_steps; ++step) {
+            const float parameter = path_parameters[step];
+            const float next_parameter = path_parameters[step + 1];
+            const float midpoint_parameter = 0.5f * (
+                parameter + next_parameter
+            );
+            const float midpoint_yaw = midpoint_parameter * goal.yaw;
+            const float signed_distance =
+                -backoff_distance * (next_parameter - parameter);
+            TrajectoryPose& next_pose = trajectory_poses[step + 1];
+            next_pose.position = trajectory_poses[step].position
+                + signed_distance * Eigen::Vector2f(
+                    std::cos(midpoint_yaw),
+                    std::sin(midpoint_yaw)
+                );
+            next_pose.yaw = wrap_to_pi(next_parameter * goal.yaw);
+        }
+        goal = trajectory_poses[motion_steps];
+    } else {
+        // A cubic Bezier curve honors both the robot's initial forward direction
+        // and the final approach direction. This replaces the old random endpoint
+        // with a smooth path whose endpoint is exactly the externally supplied goal.
+        const Eigen::Vector2f start_position = Eigen::Vector2f::Zero();
+        const float direct_distance = goal.position.norm();
+        const float tangent_length = path_tangent_scale * direct_distance;
+        const Eigen::Vector2f start_control(
+            tangent_length,
+            0.0f
+        );
+        const Eigen::Vector2f goal_control = goal.position - tangent_length *
+            Eigen::Vector2f(std::cos(goal.yaw), std::sin(goal.yaw));
 
-    for (int step = 0; step <= motion_steps; ++step) {
-        const float parameter = path_parameters[step];
-        const float complement = 1.0f - parameter;
-        TrajectoryPose& pose = trajectory_poses[step];
-        pose.position =
-            complement * complement * complement * start_position
-            + 3.0f * complement * complement * parameter * start_control
-            + 3.0f * complement * parameter * parameter * goal_control
-            + parameter * parameter * parameter * goal.position;
+        for (int step = 0; step <= motion_steps; ++step) {
+            const float parameter = path_parameters[step];
+            const float complement = 1.0f - parameter;
+            TrajectoryPose& pose = trajectory_poses[step];
+            pose.position =
+                complement * complement * complement * start_position
+                + 3.0f * complement * complement * parameter * start_control
+                + 3.0f * complement * parameter * parameter * goal_control
+                + parameter * parameter * parameter * goal.position;
 
-        const Eigen::Vector2f tangent =
-            3.0f * complement * complement
-                * (start_control - start_position)
-            + 6.0f * complement * parameter
-                * (goal_control - start_control)
-            + 3.0f * parameter * parameter
-                * (goal.position - goal_control);
-        if (tangent.squaredNorm() > 1.0e-10f) {
-            pose.yaw = std::atan2(tangent.y(), tangent.x());
-        } else {
-            pose.yaw = wrap_to_pi(parameter * goal.yaw);
+            const Eigen::Vector2f tangent =
+                3.0f * complement * complement
+                    * (start_control - start_position)
+                + 6.0f * complement * parameter
+                    * (goal_control - start_control)
+                + 3.0f * parameter * parameter
+                    * (goal.position - goal_control);
+            if (tangent.squaredNorm() > 1.0e-10f) {
+                pose.yaw = std::atan2(tangent.y(), tangent.x());
+            } else {
+                pose.yaw = wrap_to_pi(parameter * goal.yaw);
+            }
         }
     }
     // Avoid roundoff at the two boundary conditions used by goal checking.
@@ -1087,7 +1117,7 @@ void State_Navigation::generate_trajectory(
         );
         const float distance = position_delta.norm();
         trajectory_linear_velocities[step] =
-            distance / trajectory_step_dt;
+            (marker_search ? -distance : distance) / trajectory_step_dt;
         trajectory_angular_velocities[step] =
             heading_delta / trajectory_step_dt;
         trajectory_progresses[step + 1] =
@@ -1107,8 +1137,9 @@ void State_Navigation::generate_trajectory(
     trajectory_started_at = std::chrono::steady_clock::now();
     write_target_path_log();
     spdlog::info(
-        "Generated Navigation path to external goal "
+        "Generated {} Navigation path to external goal "
         "(x={:.3f}, y={:.3f}, yaw={:.3f}).",
+        marker_search ? "marker-search" : "normal",
         goal.position.x(),
         goal.position.y(),
         goal.yaw
@@ -1116,7 +1147,8 @@ void State_Navigation::generate_trajectory(
 }
 
 std::size_t State_Navigation::closest_trajectory_index(
-    const Eigen::Vector2f& position) const
+    const Eigen::Vector2f& position,
+    float heading) const
 {
     if (trajectory_poses.empty()) {
         return 0;
@@ -1127,6 +1159,27 @@ std::size_t State_Navigation::closest_trajectory_index(
     const std::size_t last_path_index = std::min(
         motion_steps, trajectory_poses.size() - 1
     );
+
+    // A marker-search maneuver must keep advancing its requested turn even if
+    // the learned policy initially makes little translational progress. Pure
+    // rotation has the same requirement because every pose shares one x/y.
+    // Track both cases by heading so positional feedback cannot reverse the
+    // requested yaw direction.
+    if (requested_marker_search || goal.position.squaredNorm() <= 1.0e-10f) {
+        std::size_t closest_index = 0;
+        float closest_heading_error = std::numeric_limits<float>::infinity();
+        for (std::size_t index = 0; index <= last_path_index; ++index) {
+            const float heading_error = std::abs(wrap_to_pi(
+                trajectory_poses[index].yaw - heading
+            ));
+            if (heading_error < closest_heading_error) {
+                closest_heading_error = heading_error;
+                closest_index = index;
+            }
+        }
+        return closest_index;
+    }
+
     std::size_t closest_index = 0;
     float closest_distance_sq = std::numeric_limits<float>::infinity();
     for (std::size_t index = 0; index <= last_path_index; ++index) {
@@ -1220,7 +1273,7 @@ void State_Navigation::update_navigation_state()
         active_localization_source = pose_source;
         initial_odometry_position = localization_pose.position.head<2>();
         initial_odometry_heading = localization_pose.heading;
-        generate_trajectory(requested_goal);
+        generate_trajectory(requested_goal, requested_marker_search);
         trajectory_initialized = true;
         spdlog::info(
             "Navigation path frame initialized from {} pose "
@@ -1248,7 +1301,8 @@ void State_Navigation::update_navigation_state()
     );
 
     const std::size_t reference_index = closest_trajectory_index(
-        estimated_position
+        estimated_position,
+        heading
     );
     closest_progress = trajectory_progresses[reference_index];
     const float startup_elapsed = std::chrono::duration<float>(

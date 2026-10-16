@@ -17,13 +17,37 @@ frame_pose_list:
 Start the simulator, then run:
 
 ```bash
-python3 aruco/frame_pose_publisher.py
+source .venv-ar/bin/activate
+python aruco/frame_pose_publisher.py
 ```
 
-Set `source: "ground_truth"` to return to the MuJoCo body-pose publisher. Only
-the selected source publishes `/frame_pose_list`. The simulator always
-broadcasts the moving `imu_yaw -> camera_link` transform needed by the ArUco
-node.
+With `frame_pose_list.aruco.display: true`, this also opens the robot camera
+view annotated with detected marker borders, IDs, frame names and pose axes.
+Press `q` while that window is focused to close the view without stopping pose
+publication. Set `display: false` for a headless run.
+
+Set `source: "ground_truth"` to return to the MuJoCo body-pose publisher. In
+ArUco mode, the simulator publishes truth separately on
+`/frame_pose_list_ground_truth`; `send_navigation_goal.py` uses it only to turn
+toward a requested marker that is initially outside the camera view. The final
+approach always uses the marker pose from `/frame_pose_list`. The simulator
+also broadcasts the moving `imu_yaw -> camera_link` transform needed by the
+ArUco node.
+
+Marker search backs up 0.15 m while turning by default. On a real robot, run
+the following from the TaskPromptRL repository and pass a fixed search
+direction relative to the robot's current heading. This prevents access to any
+simulation-truth topic:
+
+```bash
+python scripts/send_navigation_goal.py \
+  --frame-name carry_box \
+  --search-yaw 1.57 \
+  --search-backoff 0.15
+```
+
+When `--search-yaw` is omitted, simulation search continues to obtain the
+direction from `/frame_pose_list_ground_truth`.
 
 The simulated scene uses ID 0 on the robot-facing side of `carry_box`, ID 1 on
 top of `pickup_table`, and ID 2 on top of `place_table`. Regenerate their PNGs

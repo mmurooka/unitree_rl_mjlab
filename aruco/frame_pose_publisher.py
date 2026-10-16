@@ -210,6 +210,8 @@ class PublisherConfig:
     dictionary_name: str
     tf_timeout: float
     use_tf: bool
+    display: bool
+    display_window: str
     static_reference_to_camera: np.ndarray
     markers: dict[int, Marker]
 
@@ -272,6 +274,9 @@ def load_config(path: Path, require_aruco_source: bool = True) -> PublisherConfi
         "image_topic": str(aruco_config.get("image_topic", "")).strip(),
         "camera_info_topic": str(aruco_config.get("camera_info_topic", "")).strip(),
         "reference_frame": reference_frame,
+        "display_window": str(
+            aruco_config.get("display_window", "Robot camera / ArUco")
+        ).strip(),
     }
     for name, value in values.items():
         if not value:
@@ -287,6 +292,7 @@ def load_config(path: Path, require_aruco_source: bool = True) -> PublisherConfi
         dictionary_name=dictionary_name,
         tf_timeout=tf_timeout,
         use_tf=bool(aruco_config.get("use_tf", True)),
+        display=bool(aruco_config.get("display", False)),
         static_reference_to_camera=pose_matrix(static_pose),
         markers=markers,
     )
@@ -308,18 +314,19 @@ def transform_message_matrix(transform: Any) -> np.ndarray:
     )
 
 
-def image_array(message: Image) -> np.ndarray:
+def image_arrays(message: Image) -> tuple[np.ndarray, np.ndarray]:
+    """Return grayscale detection and BGR display images."""
     encoding = message.encoding.lower()
     formats = {
-        "mono8": (1, None),
-        "rgb8": (3, cv2.COLOR_RGB2GRAY),
-        "bgr8": (3, cv2.COLOR_BGR2GRAY),
-        "rgba8": (4, cv2.COLOR_RGBA2GRAY),
-        "bgra8": (4, cv2.COLOR_BGRA2GRAY),
+        "mono8": (1, None, cv2.COLOR_GRAY2BGR),
+        "rgb8": (3, cv2.COLOR_RGB2GRAY, cv2.COLOR_RGB2BGR),
+        "bgr8": (3, cv2.COLOR_BGR2GRAY, None),
+        "rgba8": (4, cv2.COLOR_RGBA2GRAY, cv2.COLOR_RGBA2BGR),
+        "bgra8": (4, cv2.COLOR_BGRA2GRAY, cv2.COLOR_BGRA2BGR),
     }
     if encoding not in formats:
         raise ValueError(f"unsupported image encoding: {message.encoding}")
-    channels, conversion = formats[encoding]
+    channels, gray_conversion, bgr_conversion = formats[encoding]
     packed_width = int(message.width) * channels
     if int(message.step) < packed_width:
         raise ValueError("image step is smaller than its packed row width")
@@ -330,9 +337,15 @@ def image_array(message: Image) -> np.ndarray:
     rows = data[:expected].reshape(int(message.height), int(message.step))
     pixels = rows[:, :packed_width]
     if channels == 1:
-        return pixels.reshape(int(message.height), int(message.width))
-    color = pixels.reshape(int(message.height), int(message.width), channels)
-    return cv2.cvtColor(color, conversion)
+        gray = pixels.reshape(int(message.height), int(message.width)).copy()
+        return gray, cv2.cvtColor(gray, bgr_conversion)
+    source = pixels.reshape(int(message.height), int(message.width), channels)
+    gray = cv2.cvtColor(source, gray_conversion)
+    if bgr_conversion is None:
+        display = source.copy()
+    else:
+        display = cv2.cvtColor(source, bgr_conversion)
+    return gray, display
 
 
 class ArucoFramePosePublisher(Node):
@@ -344,6 +357,8 @@ class ArucoFramePosePublisher(Node):
         self.camera_matrix: np.ndarray | None = None
         self.distortion: np.ndarray | None = None
         self.last_warning: dict[str, float] = {}
+        self.display_enabled = config.display
+        self.display_initialized = False
 
         self.publisher = self.create_publisher(String, config.topic, 1)
         self.info_subscription = self.create_subscription(
@@ -369,8 +384,33 @@ class ArucoFramePosePublisher(Node):
         self.get_logger().info(
             f"publishing {config.topic} from {config.image_topic}; "
             f"dictionary={config.dictionary_name}, markers=[{marker_summary}], "
-            f"reference={config.reference_frame} via {transform_source}"
+            f"reference={config.reference_frame} via {transform_source}, "
+            f"display={'on' if config.display else 'off'}"
         )
+
+    def show_camera(self, image: np.ndarray) -> None:
+        if not self.display_enabled:
+            return
+        try:
+            if not self.display_initialized:
+                cv2.namedWindow(self.config.display_window, cv2.WINDOW_AUTOSIZE)
+                self.display_initialized = True
+            cv2.imshow(self.config.display_window, image)
+            if cv2.waitKey(1) & 0xFF == ord("q"):
+                cv2.destroyWindow(self.config.display_window)
+                self.display_initialized = False
+                self.display_enabled = False
+                self.get_logger().info("camera display closed")
+        except cv2.error as error:
+            self.display_initialized = False
+            self.display_enabled = False
+            self.warn_throttled("display", f"camera display disabled: {error}")
+
+    def destroy_node(self) -> None:
+        if self.display_initialized:
+            cv2.destroyWindow(self.config.display_window)
+            self.display_initialized = False
+        super().destroy_node()
 
     def warn_throttled(self, key: str, message: str, seconds: float = 2.0) -> None:
         now = time.monotonic()
@@ -406,23 +446,30 @@ class ArucoFramePosePublisher(Node):
         return transform_message_matrix(transform.transform)
 
     def on_image(self, message: Image) -> None:
-        if self.camera_matrix is None or self.distortion is None:
-            self.warn_throttled("no_info", "waiting for CameraInfo")
-            return
-        camera_frame = self.config.camera_frame or message.header.frame_id
-        if not camera_frame:
-            self.warn_throttled("camera_frame", "Image header has no camera frame")
-            return
-        reference_to_camera = self.reference_to_camera(camera_frame)
-        if reference_to_camera is None:
-            return
         try:
-            gray = image_array(message)
+            gray, display = image_arrays(message)
         except ValueError as error:
             self.warn_throttled("image", str(error))
             return
 
         corners, ids, _ = self.marker_detector.detect(gray)
+        if ids is not None:
+            cv2.aruco.drawDetectedMarkers(display, corners, ids)
+
+        if self.camera_matrix is None or self.distortion is None:
+            self.warn_throttled("no_info", "waiting for CameraInfo")
+            self.show_camera(display)
+            return
+        camera_frame = self.config.camera_frame or message.header.frame_id
+        if not camera_frame:
+            self.warn_throttled("camera_frame", "Image header has no camera frame")
+            self.show_camera(display)
+            return
+        reference_to_camera = self.reference_to_camera(camera_frame)
+        if reference_to_camera is None:
+            self.show_camera(display)
+            return
+
         detected: list[dict[str, Any]] = []
         if ids is not None:
             for corner, marker_id_value in zip(corners, ids.reshape(-1)):
@@ -435,6 +482,27 @@ class ArucoFramePosePublisher(Node):
                 if marker_pose is None:
                     continue
                 rotation_vector, translation_vector = marker_pose
+                cv2.drawFrameAxes(
+                    display,
+                    self.camera_matrix,
+                    self.distortion,
+                    rotation_vector,
+                    translation_vector,
+                    marker.marker_size * 0.5,
+                )
+                label_position = tuple(
+                    np.rint(np.asarray(corner).reshape(4, 2)[0]).astype(int)
+                )
+                cv2.putText(
+                    display,
+                    marker.frame_name,
+                    label_position,
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.5,
+                    (0, 255, 0),
+                    1,
+                    cv2.LINE_AA,
+                )
                 camera_to_marker = np.eye(4, dtype=np.float64)
                 camera_to_marker[:3, :3] = cv2.Rodrigues(rotation_vector)[0]
                 camera_to_marker[:3, 3] = translation_vector
@@ -462,6 +530,7 @@ class ArucoFramePosePublisher(Node):
             separators=(",", ":"),
         )
         self.publisher.publish(output)
+        self.show_camera(display)
 
 
 def parse_args(arguments: list[str] | None = None) -> argparse.Namespace:

@@ -53,10 +53,14 @@ d435:
 # contains frame_name and rel_pose=[x,y,z,qx,qy,qz,qw].
 frame_pose_list:
   enabled: true
-  # "ground_truth" publishes MuJoCo body poses. "aruco" disables that
-  # publisher and lets aruco/frame_pose_publisher.py own the same topic.
+  # "ground_truth" publishes MuJoCo body poses on `topic`. "aruco" lets
+  # aruco/frame_pose_publisher.py own `topic` and keeps truth on the separate
+  # search-only topic below.
   source: "aruco"
   topic: "/frame_pose_list"
+  # In ArUco mode, simulation truth remains available only for rotating toward
+  # an initially invisible target. It is never used for the final approach.
+  ground_truth_topic: "/frame_pose_list_ground_truth"
   # Positions are expressed in a gravity-aligned frame at this site, using
   # only the robot yaw so they match the Navigation goal convention.
   reference_site: "imu"
@@ -71,6 +75,10 @@ frame_pose_list:
     camera_frame: ""
     dictionary: "DICT_4X4_50"
     tf_timeout: 0.1
+    # Show the robot camera with detected marker borders, IDs and pose axes.
+    # Press q while the window is focused to close only the display.
+    display: true
+    display_window: "Robot camera / ArUco"
     # If TF is unavailable on the real robot, set use_tf to false and fill in
     # the calibrated [x,y,z,qx,qy,qz,qw] pose of the camera in reference_frame.
     use_tf: true

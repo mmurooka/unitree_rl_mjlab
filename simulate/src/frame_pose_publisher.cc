@@ -69,9 +69,14 @@ public:
         reference_site_id_(mj_name2id(
             model, mjOBJ_SITE, param::config.frame_pose_reference_site.c_str())),
         camera_body_id_(mj_name2id(model, mjOBJ_BODY, "camera_link")),
-        publish_ground_truth_(param::config.frame_pose_source == "ground_truth")
+        publish_on_primary_topic_(
+            param::config.frame_pose_source == "ground_truth"),
+        output_topic_(
+            publish_on_primary_topic_
+                ? param::config.frame_pose_topic
+                : param::config.frame_pose_ground_truth_topic)
   {
-    if (param::config.frame_pose_topic.empty() ||
+    if (output_topic_.empty() ||
         param::config.frame_pose_publish_frequency <= 0.0)
     {
       throw std::runtime_error("invalid frame-pose-list topic or publish frequency");
@@ -120,22 +125,20 @@ public:
     node_ = std::make_shared<rclcpp::Node>("unitree_mujoco_frame_pose_list");
     camera_tf_broadcaster_ =
         std::make_unique<tf2_ros::TransformBroadcaster>(node_);
-    if (publish_ground_truth_)
-    {
-      publisher_ = node_->create_publisher<std_msgs::msg::String>(
-          param::config.frame_pose_topic, rclcpp::QoS(1));
-    }
+    publisher_ = node_->create_publisher<std_msgs::msg::String>(
+        output_topic_, rclcpp::QoS(1));
 
     std::cout << "Frame pose list source: " << param::config.frame_pose_source;
-    if (publish_ground_truth_)
+    if (publish_on_primary_topic_)
     {
       std::cout << "; publishing " << frames_.size()
                 << " non-robot MuJoCo bodies on "
-                << param::config.frame_pose_topic;
+                << output_topic_;
     }
     else
     {
-      std::cout << "; MuJoCo truth publisher disabled";
+      std::cout << "; publishing simulation truth for marker search on "
+                << output_topic_;
     }
     if (camera_body_id_ >= 0)
     {
@@ -236,11 +239,6 @@ public:
       camera_tf_broadcaster_->sendTransform(transform);
     }
 
-    if (!publish_ground_truth_)
-    {
-      return;
-    }
-
     std::ostringstream json;
     json << std::setprecision(17)
          << "{\"stamp\":" << data->time
@@ -304,7 +302,8 @@ private:
   double period_;
   int reference_site_id_;
   int camera_body_id_;
-  bool publish_ground_truth_;
+  bool publish_on_primary_topic_;
+  std::string output_topic_;
   double last_sim_time_ = -1.0;
   double next_publish_time_ = 0.0;
   bool owns_ros_context_ = false;

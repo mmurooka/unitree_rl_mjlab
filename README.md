@@ -216,11 +216,14 @@ The G1 controller also includes navigation policies under
 - `L2 + B`: return to Passive
 
 Navigation is started externally with TaskPromptRL's
-`scripts/send_navigation_goal.py`. In simulation, MuJoCo publishes named body
-poses relative to the robot on `/frame_pose_list`. The script selects a
-`frame_name` and generates a goal `offset` metres before its local +x-facing
-side, with the goal yaw matching the frame yaw. For example, `carry_box 0.7`
-stops 0.7 m before `carry_box`. Sending from
+`scripts/send_navigation_goal.py`. The script selects a `frame_name` from
+`/frame_pose_list` and generates a goal `offset` metres before its local
++x-facing side, with the goal yaw matching the frame yaw. If the selected
+ArUco marker is initially outside the simulated camera view, the script reads
+its coarse direction from `/frame_pose_list_ground_truth`, starts turning while
+backing up slightly, and replaces that goal using the marker pose once it
+becomes visible.
+The truth pose is not used for the final approach. Sending from
 Velocity or a finished/holding OnlineMimic automatically enters Navigation;
 sending during Navigation replaces the active goal. OnlineMimic reports `BUSY`
 until its motion has finished.
@@ -327,8 +330,22 @@ and controller are running:
 ```bash
 source /opt/ros/jazzy/setup.bash
 source venv-tprl/bin/activate
-python scripts/send_navigation_goal.py carry_box 0.7
+python scripts/send_navigation_goal.py --frame-name carry_box --offset 0.7
 ```
+
+Marker search moves backward 0.15 m while turning. For a real robot, provide
+the approximate target direction in radians relative to its current heading;
+this bypasses the simulation ground-truth topic:
+
+```bash
+python scripts/send_navigation_goal.py \
+  --frame-name carry_box \
+  --offset 0.7 \
+  --search-yaw 1.57
+```
+
+Use `--search-backoff` to change the backward distance. The ArUco publisher
+shows the annotated robot camera when `frame_pose_list.aruco.display` is true.
 
 `/frame_pose_list` uses `std_msgs/msg/String` with a JSON payload. Each element
 has `frame_name` and

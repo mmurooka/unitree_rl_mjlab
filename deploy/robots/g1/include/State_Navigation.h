@@ -70,9 +70,13 @@ private:
         std::string& source,
         float& age_seconds);
     void reset_navigation_state();
-    void generate_trajectory(const TrajectoryPose& requested_goal);
+    void generate_trajectory(
+        const TrajectoryPose& requested_goal,
+        bool marker_search);
     void set_requested_goal(const NavigationGoalService::Goal& goal);
-    std::size_t closest_trajectory_index(const Eigen::Vector2f& position) const;
+    std::size_t closest_trajectory_index(
+        const Eigen::Vector2f& position,
+        float heading) const;
     std::size_t offset_trajectory_index(
         std::size_t reference_index,
         float offset_seconds) const;
@@ -149,6 +153,7 @@ private:
     bool localization_warning_reported{false};
     bool goal_warning_reported{false};
     bool has_requested_goal{false};
+    bool requested_marker_search{false};
     bool goal_reached{false};
     std::array<float, 3> command{0.0f, 0.0f, 0.0f};
     std::array<float, 6> marker_pose_camera{0.0f, 0.0f, 0.0f, 0.0f, 0.0f, -1.0f};

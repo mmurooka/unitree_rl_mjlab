@@ -237,6 +237,20 @@ int main(int argc, char** argv)
           "active Navigation accepts a replacement goal");
     check(std::abs(goal.y - 1.0f) < 1e-6f,
           "replacement Navigation goal survives transport");
+
+    send_navigation("SEARCH 0.15 1.57079632679");
+    const auto search_deadline = Clock::now() + std::chrono::seconds(5);
+    while (!navigation_goal_service->consume_navigation_goal(goal)) {
+        check(Clock::now() < search_deadline,
+              "marker-search Navigation goal timed out");
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    check(read_navigation_reply() == "STARTED",
+          "active Navigation accepts a marker-search goal");
+    check(goal.marker_search &&
+          std::abs(goal.x + 0.15f) < 1e-6f &&
+          std::abs(goal.yaw - 1.57079632679f) < 1e-6f,
+          "marker-search mode and values survive transport");
     navigation_goal_service->leave_navigation();
 
     navigation_goal_service->activate_mimic();

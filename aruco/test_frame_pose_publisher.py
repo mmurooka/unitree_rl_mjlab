@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 import cv2
 import numpy as np
@@ -9,6 +10,7 @@ import yaml
 from frame_pose_publisher import (
     CompatibleArucoDetector,
     estimate_marker_pose,
+    image_arrays,
     load_config,
     matrix_pose,
     pose_matrix,
@@ -16,6 +18,23 @@ from frame_pose_publisher import (
 
 
 class PoseMathTest(unittest.TestCase):
+    def test_rgb_image_is_converted_for_detection_and_display(self):
+        message = SimpleNamespace(
+            encoding="rgb8",
+            width=2,
+            height=1,
+            step=8,
+            data=bytes([255, 0, 0, 0, 255, 0, 99, 99]),
+        )
+
+        gray, display = image_arrays(message)
+
+        self.assertEqual(gray.shape, (1, 2))
+        np.testing.assert_array_equal(
+            display,
+            np.array([[[0, 0, 255], [0, 255, 0]]], dtype=np.uint8),
+        )
+
     def test_pose_matrix_round_trip(self):
         expected = np.array([1.2, -0.3, 0.8, 0.1, -0.2, 0.3, 0.9])
         actual = np.asarray(matrix_pose(pose_matrix(expected)))

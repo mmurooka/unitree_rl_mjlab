@@ -175,15 +175,31 @@ void NavigationGoalService::receive()
             std::string verb;
             std::string extra;
             Goal goal;
-            const bool valid =
-                bool(stream >> verb >> goal.x >> goal.y >> goal.yaw) &&
-                !(stream >> extra) &&
-                verb == "GOAL" &&
-                std::isfinite(goal.x) &&
-                std::isfinite(goal.y) &&
-                std::isfinite(goal.yaw);
+            bool valid = false;
+            stream >> verb;
+            if (verb == "GOAL") {
+                valid =
+                    bool(stream >> goal.x >> goal.y >> goal.yaw) &&
+                    !(stream >> extra) &&
+                    std::isfinite(goal.x) &&
+                    std::isfinite(goal.y) &&
+                    std::isfinite(goal.yaw);
+            } else if (verb == "SEARCH") {
+                float backoff = 0.0f;
+                valid =
+                    bool(stream >> backoff >> goal.yaw) &&
+                    !(stream >> extra) &&
+                    std::isfinite(backoff) &&
+                    backoff >= 0.0f &&
+                    std::isfinite(goal.yaw);
+                if (valid) {
+                    goal.x = -backoff;
+                    goal.marker_search = true;
+                }
+            }
             if (!valid) {
-                reply = "ERROR expected GOAL x y yaw with finite values";
+                reply = "ERROR expected GOAL x y yaw or SEARCH backoff yaw "
+                        "with finite values";
             } else {
                 std::shared_ptr<Request> request;
                 {
