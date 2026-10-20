@@ -1,0 +1,30 @@
+# Initial G1 front-camera intrinsics used by this project. Recalibrate and
+# replace these values when accurate metric ArUco pose estimates are required.
+image_width: 1920
+image_height: 1080
+camera_name: g1_front_camera
+camera_matrix:
+  rows: 3
+  cols: 3
+  data: [1350.0, 0.0, 964.4358, 0.0, 1350.0, 538.3260, 0.0, 0.0, 1.0]
+distortion_model: plumb_bob
+distortion_coefficients:
+  rows: 1
+  cols: 5
+  data: [0.0, 0.0, 0.0, 0.0, 0.0]
+rectification_matrix:
+  rows: 3
+  cols: 3
+  data: [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
+projection_matrix:
+  rows: 3
+  cols: 4
+  data: [1350.0, 0.0, 964.4358, 0.0, 0.0, 1350.0, 538.3260, 0.0, 0.0, 0.0, 1.0, 0.0]
+
+# livox_frame -> camera optical frame. These initial values are derived from
+# the G1 simulation model and should be replaced by measured real-robot
+# extrinsics when precise approach positions are required.
+static_transform:
+  parent_frame: livox_frame
+  translation: [-0.06773804, 0.01753, -0.01379317]
+  rotation_xyzw: [-0.25570719, 0.25570719, 0.65925248, -0.65925248]

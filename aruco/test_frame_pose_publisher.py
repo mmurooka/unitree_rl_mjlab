@@ -14,6 +14,7 @@ from frame_pose_publisher import (
     load_config,
     matrix_pose,
     pose_matrix,
+    yaw_aligned_reference_to_camera,
 )
 
 
@@ -40,6 +41,40 @@ class PoseMathTest(unittest.TestCase):
         actual = np.asarray(matrix_pose(pose_matrix(expected)))
         expected[3:] /= np.linalg.norm(expected[3:])
         np.testing.assert_allclose(actual, expected, atol=1.0e-12)
+
+    def test_glim_reference_keeps_base_origin_and_removes_only_yaw(self):
+        yaw = np.pi / 2.0
+        roll = np.pi / 6.0
+        yaw_rotation = np.array(
+            [
+                [np.cos(yaw), -np.sin(yaw), 0.0],
+                [np.sin(yaw), np.cos(yaw), 0.0],
+                [0.0, 0.0, 1.0],
+            ]
+        )
+        roll_rotation = np.array(
+            [
+                [1.0, 0.0, 0.0],
+                [0.0, np.cos(roll), -np.sin(roll)],
+                [0.0, np.sin(roll), np.cos(roll)],
+            ]
+        )
+        world_to_base = np.eye(4)
+        world_to_base[:3, :3] = yaw_rotation @ roll_rotation
+        world_to_base[:3, 3] = [4.0, -2.0, 0.5]
+        base_to_camera = np.eye(4)
+        base_to_camera[:3, 3] = [0.2, -0.1, 0.3]
+
+        actual = yaw_aligned_reference_to_camera(
+            world_to_base, world_to_base @ base_to_camera
+        )
+
+        np.testing.assert_allclose(
+            actual[:3, :3], roll_rotation, atol=1.0e-12
+        )
+        np.testing.assert_allclose(
+            actual[:3, 3], roll_rotation @ base_to_camera[:3, 3], atol=1.0e-12
+        )
 
     def test_object_to_marker_is_inverted(self):
         config = {
