@@ -13,6 +13,7 @@ from frame_pose_publisher import (
     image_arrays,
     load_config,
     matrix_pose,
+    parse_args,
     pose_matrix,
     yaw_aligned_reference_to_camera,
 )
@@ -75,6 +76,26 @@ class PoseMathTest(unittest.TestCase):
         np.testing.assert_allclose(
             actual[:3, 3], roll_rotation @ base_to_camera[:3, 3], atol=1.0e-12
         )
+
+    def test_stock_g1_glim_offset_makes_robot_forward_positive(self):
+        world_to_livox = np.eye(4)
+        world_to_camera = np.eye(4)
+
+        actual = yaw_aligned_reference_to_camera(
+            world_to_livox,
+            world_to_camera,
+            np.pi,
+        )
+        point_in_front_of_robot_in_livox = np.array([-1.0, 0.0, 0.0, 1.0])
+
+        np.testing.assert_allclose(
+            actual @ point_in_front_of_robot_in_livox,
+            [1.0, 0.0, 0.0, 1.0],
+            atol=1.0e-12,
+        )
+
+    def test_glim_heading_offset_defaults_to_stock_g1_axis_correction(self):
+        self.assertAlmostEqual(parse_args([]).glim_heading_offset, np.pi)
 
     def test_object_to_marker_is_inverted(self):
         config = {

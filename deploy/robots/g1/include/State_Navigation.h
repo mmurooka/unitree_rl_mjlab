@@ -178,6 +178,7 @@ private:
     std::string localization_source{"auto"};
     std::string active_localization_source;
     std::string odometry_topic{"/glim_ros/odom"};
+    float odometry_heading_offset{0.0f};
     std::string simulator_state_topic{"rt/sportmodestate"};
     float odometry_timeout{0.5f};
     TrajectoryPose requested_goal;

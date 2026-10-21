@@ -170,6 +170,9 @@ State_Navigation::State_Navigation(int state_mode, std::string state_string)
         localization_source
     );
     odometry_topic = nav_cfg["odometry_topic"].as<std::string>(odometry_topic);
+    odometry_heading_offset = nav_cfg["odometry_heading_offset"].as<float>(
+        odometry_heading_offset
+    );
     simulator_state_topic = nav_cfg["simulator_state_topic"].as<std::string>(
         simulator_state_topic
     );
@@ -244,7 +247,8 @@ State_Navigation::State_Navigation(int state_mode, std::string state_string)
     const bool use_simulator = localization_source != "glim";
     if ((use_glim && odometry_topic.empty()) ||
         (use_simulator && simulator_state_topic.empty()) ||
-        odometry_timeout <= 0.0f) {
+        odometry_timeout <= 0.0f ||
+        !std::isfinite(odometry_heading_offset)) {
         throw std::runtime_error("Invalid Navigation localization configuration.");
     }
     if (pose_log_enabled &&
@@ -445,10 +449,12 @@ State_Navigation::State_Navigation(int state_mode, std::string state_string)
     ));
     spdlog::info(
         "Navigation localization source: {} (GLIM: {}, simulator: {}, "
-        "timeout: {:.2f} s); external goal endpoint: {}.",
+        "heading offset: {:.6f} rad, timeout: {:.2f} s); external goal "
+        "endpoint: {}.",
         localization_source,
         odometry_topic,
         simulator_state_topic,
+        odometry_heading_offset,
         odometry_timeout,
         state_cfg["endpoint"].as<std::string>(
             "ipc:///tmp/task_prompt_rl_navigation.sock")
@@ -857,7 +863,11 @@ bool State_Navigation::read_latest_glim_odometry(
 
     pose.position = latest_odometry_position;
     pose.orientation = latest_odometry_orientation;
-    pose.heading = quaternion_heading(pose.orientation);
+    const float raw_heading = quaternion_heading(pose.orientation);
+    pose.heading = std::atan2(
+        std::sin(raw_heading + odometry_heading_offset),
+        std::cos(raw_heading + odometry_heading_offset)
+    );
     age_seconds = std::chrono::duration<float>(
         std::chrono::steady_clock::now() - latest_odometry_received_at
     ).count();

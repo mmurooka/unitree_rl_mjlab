@@ -12,6 +12,8 @@ commands:
     # auto | glim | simulator
     localization_source: auto
     odometry_topic: /glim_ros/odom
+    # Stock G1 Livox raw +x points opposite the robot's forward direction.
+    odometry_heading_offset: 3.141592653589793
     simulator_state_topic: rt/sportmodestate
     odometry_timeout: 0.5
     # x/y/yaw goals are supplied externally and interpreted in the robot frame

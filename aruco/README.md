@@ -89,21 +89,23 @@ values come from the existing G1 ArUco setup; replace that file with calibration
 from the particular robot for accurate metric poses. A different standard ROS
 camera-calibration YAML can be selected with `--calibration`.
 
-The same YAML also contains the initial
-`livox_frame -> g1_front_camera_optical_frame` camera extrinsic. The bridge
-publishes it on `/tf_static`, connecting the camera to GLIM's observed
-`odom -> livox_frame` transform. These extrinsics are derived from the G1
-simulation model and must be replaced with measured values for precise
-real-robot approaches. If another node already publishes a calibrated camera
-transform, start the bridge with `--no-publish-static-tf` instead.
+The same YAML also contains the stock G1
+`livox_frame -> g1_front_camera_optical_frame` camera extrinsic. It is derived
+from Unitree's G1 D435 and MID-360 mounts, the raw Livox sensor axes, and the ROS
+camera optical-frame convention. The bridge publishes it on `/tf_static`,
+connecting the camera to GLIM's observed `odom -> livox_frame` transform. If
+another node already publishes a calibrated camera transform, start the bridge
+with `--no-publish-static-tf` instead.
 
 `--glim` makes the ArUco node consume that connected TF tree. It removes the
 current GLIM base yaw and origin while preserving roll/pitch and the camera
-mounting transform, producing marker poses in the same current robot-relative
-convention expected when Navigation captures its initial GLIM pose. It labels
-the JSON reference as `glim_base_yaw`. The defaults match this project's GLIM
-output (`odom -> livox_frame`); override them when needed with
-`--glim-world-frame` and `--glim-base-frame`.
+mounting transform. Stock G1 Livox data uses a raw sensor frame whose +x axis
+is opposite the robot's forward direction, so the default also applies a pi-rad
+heading offset. This produces marker poses with +x robot-forward, matching the
+Navigation controller's corrected GLIM heading. It labels the JSON reference
+as `glim_base_yaw` and records the correction in
+`reference_yaw_offset_rad`. Override non-stock frames with
+`--glim-world-frame`, `--glim-base-frame`, and `--glim-heading-offset`.
 
 Use the same marker YAML mapping with `source: "aruco"`. Without `--glim`, the
 simulation behavior remains unchanged and uses the configured `reference_frame`.

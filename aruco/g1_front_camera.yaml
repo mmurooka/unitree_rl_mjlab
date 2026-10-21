@@ -21,10 +21,10 @@ projection_matrix:
   cols: 4
   data: [1350.0, 0.0, 964.4358, 0.0, 0.0, 1350.0, 538.3260, 0.0, 0.0, 0.0, 1.0, 0.0]
 
-# livox_frame -> camera optical frame. These initial values are derived from
-# the G1 simulation model and should be replaced by measured real-robot
-# extrinsics when precise approach positions are required.
+# Stock G1 livox_frame -> D435 color optical frame. Derived from Unitree's
+# g1_dual_arm.urdf D435/MID-360 mounts, the Livox raw x/z axis reversal, the
+# ROS optical-frame convention, and the 15 mm D435 color-imager offset.
 static_transform:
   parent_frame: livox_frame
-  translation: [-0.06773804, 0.01753, -0.01379317]
-  rotation_xyzw: [-0.25570719, 0.25570719, 0.65925248, -0.65925248]
+  translation: [-0.0672953229, 0.0175, -0.0053181361]
+  rotation_xyzw: [0.2688868378, -0.2688868378, -0.6539876669, 0.6539876669]

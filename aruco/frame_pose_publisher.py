@@ -211,6 +211,7 @@ class PublisherConfig:
     tf_timeout: float
     use_tf: bool
     tf_yaw_reference: bool
+    tf_yaw_offset: float
     tf_world_frame: str
     tf_base_frame: str
     display: bool
@@ -296,6 +297,7 @@ def load_config(path: Path, require_aruco_source: bool = True) -> PublisherConfi
         tf_timeout=tf_timeout,
         use_tf=bool(aruco_config.get("use_tf", True)),
         tf_yaw_reference=False,
+        tf_yaw_offset=0.0,
         tf_world_frame="",
         tf_base_frame="",
         display=bool(aruco_config.get("display", False)),
@@ -321,9 +323,11 @@ def transform_message_matrix(transform: Any) -> np.ndarray:
 
 
 def yaw_aligned_reference_to_camera(
-    world_to_base: np.ndarray, world_to_camera: np.ndarray
+    world_to_base: np.ndarray,
+    world_to_camera: np.ndarray,
+    yaw_offset: float = 0.0,
 ) -> np.ndarray:
-    """Express the camera in a current-base-origin, yaw-only reference frame."""
+    """Express the camera in a corrected, current-base yaw reference frame."""
     world_to_base = np.asarray(world_to_base, dtype=np.float64)
     world_to_camera = np.asarray(world_to_camera, dtype=np.float64)
     if world_to_base.shape != (4, 4) or world_to_camera.shape != (4, 4):
@@ -332,8 +336,10 @@ def yaw_aligned_reference_to_camera(
         np.isfinite(world_to_camera)
     ):
         raise ValueError("TF matrices must contain only finite values")
+    if not math.isfinite(yaw_offset):
+        raise ValueError("yaw_offset must be finite")
 
-    yaw = math.atan2(world_to_base[1, 0], world_to_base[0, 0])
+    yaw = math.atan2(world_to_base[1, 0], world_to_base[0, 0]) + yaw_offset
     cosine = math.cos(yaw)
     sine = math.sin(yaw)
     world_to_reference = np.eye(4, dtype=np.float64)
@@ -413,7 +419,7 @@ class ArucoFramePosePublisher(Node):
         if config.tf_yaw_reference:
             transform_source = (
                 f"GLIM TF {config.tf_world_frame} <- {config.tf_base_frame} "
-                f"<- camera (yaw-aligned)"
+                f"<- camera (yaw-aligned, offset={config.tf_yaw_offset:.6f} rad)"
             )
         else:
             transform_source = (
@@ -489,7 +495,9 @@ class ArucoFramePosePublisher(Node):
                     base_to_camera_message.transform
                 )
                 return yaw_aligned_reference_to_camera(
-                    world_to_base, world_to_base @ base_to_camera
+                    world_to_base,
+                    world_to_base @ base_to_camera,
+                    self.config.tf_yaw_offset,
                 )
             transform = self.tf_buffer.lookup_transform(
                 self.config.reference_frame,
@@ -594,6 +602,7 @@ class ArucoFramePosePublisher(Node):
             {
                 "stamp": stamp,
                 "reference_frame": self.config.reference_frame,
+                "reference_yaw_offset_rad": self.config.tf_yaw_offset,
                 "frame_pose_list": detected,
             },
             separators=(",", ":"),
@@ -631,6 +640,15 @@ def parse_args(arguments: list[str] | None = None) -> argparse.Namespace:
         help="GLIM moving base frame used with --glim (default: livox_frame)",
     )
     parser.add_argument(
+        "--glim-heading-offset",
+        type=float,
+        default=math.pi,
+        help=(
+            "yaw added to the GLIM base heading so +x is robot-forward "
+            "(default: pi for the stock G1 livox_frame)"
+        ),
+    )
+    parser.add_argument(
         "--glim-reference-frame",
         default="glim_base_yaw",
         help="reference_frame label in published JSON when using --glim",
@@ -659,11 +677,18 @@ def main(arguments: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
             return 2
+        if not math.isfinite(args.glim_heading_offset):
+            print(
+                "configuration error: glim_heading_offset must be finite",
+                file=sys.stderr,
+            )
+            return 2
         config = replace(
             config,
             reference_frame=glim_values["glim_reference_frame"],
             use_tf=True,
             tf_yaw_reference=True,
+            tf_yaw_offset=args.glim_heading_offset,
             tf_world_frame=glim_values["glim_world_frame"],
             tf_base_frame=glim_values["glim_base_frame"],
         )
