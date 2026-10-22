@@ -2,16 +2,17 @@
   <include file="scene_g1_table_box.xml"/>
   <worldbody>
     <!-- A 6 x 6 x 2.5 m room gives 3D LiDAR odometry observable surfaces.
-         A floor-only cloud leaves horizontal translation degenerate. -->
-    <geom name="glim_wall_pos_x" type="box" pos="3.0 0 1.25"
+         A floor-only cloud leaves horizontal translation degenerate.
+         Group 5 is hidden in the UI; sensor rays/images still include it. -->
+    <geom name="glim_wall_pos_x" type="box" group="5" pos="3.0 0 1.25"
           size="0.05 3.0 1.25" rgba="0.72 0.74 0.76 1"/>
-    <geom name="glim_wall_neg_x" type="box" pos="-3.0 0 1.25"
+    <geom name="glim_wall_neg_x" type="box" group="5" pos="-3.0 0 1.25"
           size="0.05 3.0 1.25" rgba="0.72 0.74 0.76 1"/>
-    <geom name="glim_wall_pos_y" type="box" pos="0 3.0 1.25"
+    <geom name="glim_wall_pos_y" type="box" group="5" pos="0 3.0 1.25"
           size="3.0 0.05 1.25" rgba="0.78 0.76 0.72 1"/>
-    <geom name="glim_wall_neg_y" type="box" pos="0 -3.0 1.25"
+    <geom name="glim_wall_neg_y" type="box" group="5" pos="0 -3.0 1.25"
           size="3.0 0.05 1.25" rgba="0.78 0.76 0.72 1"/>
-    <geom name="glim_ceiling" type="box" pos="0 0 2.5"
+    <geom name="glim_ceiling" type="box" group="5" pos="0 0 2.5"
           size="3.0 3.0 0.05" rgba="0.86 0.86 0.84 1"/>
   </worldbody>
 </mujoco>

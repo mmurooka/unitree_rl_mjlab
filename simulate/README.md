@@ -35,6 +35,10 @@ There is no sim-only GLIM configuration or combined GLIM launcher.
 simulated IMU placement and topic/frame names. It never starts or modifies GLIM.
 Livox acceleration is published in g in both environments.
 
+The GLIM room walls and ceiling use geometry group 5, hidden by default in the
+MuJoCo viewer. Enable group 5 in the viewer to inspect them. Collision, LiDAR
+rays and simulated camera images still include the room.
+
 ## Table and box scene
 
 Select `src/assets/robots/unitree_g1/xmls/scene_g1_table_box.xml` in

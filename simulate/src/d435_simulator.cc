@@ -104,6 +104,7 @@ public:
     mjv_defaultScene(&scene_);
     mjv_makeScene(model, &scene_, 100000);
     mjv_defaultOption(&option_);
+    option_.geomgroup[5] = 1;  // Room walls remain visible to sensors, hidden only in the UI.
     mjv_defaultCamera(&camera_);
     camera_.type = mjCAMERA_FIXED;
 
