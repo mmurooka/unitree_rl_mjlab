@@ -219,9 +219,9 @@ Navigation is started externally with TaskPromptRL's
 `scripts/send_navigation_goal.py`. The script selects a `frame_name` from
 `/frame_pose_list` and generates a goal `offset` metres before its local
 +x-facing side, with the goal yaw matching the frame yaw. If the selected
-ArUco marker is initially outside the camera view, use an explicit search
-direction (`--search-yaw`) to turn while backing up slightly, then use the
-observed marker pose. Object truth is reserved for evaluation. Sending from
+ArUco marker is initially outside the camera view, the sender performs bounded
+relative quarter-turn searches (or one explicit `--search-yaw` turn), then uses
+the observed marker pose with its image timestamp. Object truth is reserved for evaluation. Sending from
 Velocity or a finished/holding OnlineMimic automatically enters Navigation;
 sending during Navigation replaces the active goal. OnlineMimic reports `BUSY`
 until its motion has finished.

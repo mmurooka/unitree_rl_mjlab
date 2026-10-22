@@ -129,7 +129,6 @@ private:
     uint32_t last_measured_tick{0};
     bool measured_tick_seen{false};
     double latest_odometry_stamp{-INFINITY};
-    std::atomic<bool> localization_reset{false};
 
     mutable std::mutex odometry_mutex;
     Eigen::Vector3f latest_odometry_position{Eigen::Vector3f::Zero()};
@@ -139,6 +138,13 @@ private:
     Eigen::Vector3f raw_odometry_position{Eigen::Vector3f::Zero()};
     Eigen::Quaternionf raw_odometry_orientation{Eigen::Quaternionf::Identity()};
 #endif
+    std::atomic<bool> localization_reset{false};
+    sensor_frames::PoseHistory root_pose_history;
+    std::thread simulator_history_thread;
+    std::atomic<bool> simulator_history_running{false};
+    double requested_observation_stamp{-1.0};
+    std::string requested_clock_domain;
+    std::chrono::steady_clock::time_point goal_received_at;
     unitree::robot::go2::subscription::SportModeState::SharedPtr simulator_state;
     std::shared_ptr<NavigationGoalService> navigation_service;
 

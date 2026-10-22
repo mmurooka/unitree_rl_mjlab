@@ -59,3 +59,21 @@ sample time and `localization_age_s` its age; `robot_*` is the displacement sinc
 start in the frozen horizontal root frame. The `source` column distinguishes
 estimated from ground-truth localization. Ground truth never supplies marker
 positions or camera transforms.
+
+## Image time and Navigation start time
+
+`GOAL x y yaw` is expressed in the frozen start-root frame. Marker observations
+use `GOAL_AT simulation|ros timestamp x y yaw`. Root poses bracket the image time;
+position and shortest-path yaw are interpolated (no extrapolation, no gaps above
+0.3 s). The image-local goal is transformed into the start-root frame before
+trajectory generation. Missing history waits with zero commands for up to 2 s,
+then rejects that goal; a new observation is required. `STARTED` acknowledges
+policy acceptance, not localization readiness or goal arrival.
+
+The GLIM-free DDS robot-localization sample includes position, root quaternion
+and simulation time in one `rt/sportmodestate` message. This is an explicitly
+permitted truth input, used only for robot displacement and the above time
+compensation; object/camera truth is never read by these consumers. Both modes
+keep a 5 s root-pose history even outside Navigation. Clock rewind clears history
+and invalidates the active goal. Real image/state time remains an approximation
+based on receipt time; hardware capture latency still needs measurement.

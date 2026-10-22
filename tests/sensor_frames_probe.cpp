@@ -16,6 +16,19 @@ int main(int argc, char** argv) {
                       << c.lidar_to_imu.translation().transpose() << '\n';
             return 0;
         }
+        sensor_frames::PoseHistory poses;
+        poses.add({1,1,2,3.1}); poses.add({1.2,1.2,2.2,-3.1});
+        sensor_frames::PlanarPose middle;
+        if (!poses.at(1.1,middle) || std::abs(std::abs(middle.yaw)-M_PI)>1e-10 ||
+            poses.at(1.3,middle) || poses.at(.9,middle)) throw std::runtime_error("pose time interpolation failed");
+        poses.add({2,2,2,0});
+        if (poses.at(1.5,middle)) throw std::runtime_error("pose gap accepted");
+        if (!poses.add({0,0,0,0}) || poses.at(1,middle)) throw std::runtime_error("pose epoch not cleared");
+        // Image: root (2,3,+90deg), target one metre forward, +90deg local yaw.
+        // Start: root (2,4,180deg). The target is at the start root with zero local yaw.
+        auto goal=sensor_frames::rebase_goal({0,1,0,M_PI/2},{0,2,3,M_PI/2},{1,2,4,M_PI});
+        if (std::hypot(goal.x,goal.y)>1e-10 || std::abs(goal.yaw)>1e-10)
+            throw std::runtime_error("observation-to-start rebase failed");
         sensor_frames::History history;
         sensor_frames::State a{1.0, {}, Eigen::Quaterniond::Identity()}, b=a, out;
         b.stamp=1.02; b.q[12]=.4;

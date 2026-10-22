@@ -19,6 +19,8 @@ public:
         float y{0.0f};
         float yaw{0.0f};
         bool marker_search{false};
+        double observation_stamp{-1.0};
+        std::string clock_domain;
     };
     enum class Mode { Inactive, Velocity, Navigation, Mimic };
 

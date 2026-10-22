@@ -435,6 +435,17 @@ State_Navigation::State_Navigation(int state_mode, std::string state_string)
         simulator_state = std::make_shared<unitree::robot::go2::subscription::SportModeState>(simulator_state_topic);
         simulator_state->set_timeout_ms(std::max<uint32_t>(1U, static_cast<uint32_t>(odometry_timeout * 1000.0f)));
     }
+    if (use_simulator) {
+        simulator_history_running = true;
+        simulator_history_thread = std::thread([this] {
+            while (simulator_history_running) {
+                LocalizationPose p;
+                if (read_simulator_pose(p) && root_pose_history.add({p.stamp,p.position.x(),p.position.y(),p.heading}))
+                    localization_reset = true;
+                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            }
+        });
+    }
     spdlog::info("Navigation: environment={}, localization={}, goal frame=root_yaw, timeout={} s",
         param::environment, localization_source, odometry_timeout);
 
@@ -442,6 +453,8 @@ State_Navigation::State_Navigation(int state_mode, std::string state_string)
 
 State_Navigation::~State_Navigation()
 {
+    simulator_history_running = false;
+    if (simulator_history_thread.joinable()) simulator_history_thread.join();
     policy_thread_running = false;
     if (policy_thread.joinable()) {
         policy_thread.join();
@@ -809,6 +822,7 @@ void State_Navigation::sample_measured_state()
             has_odometry = false;
             latest_odometry_stamp = -INFINITY;
             localization_reset = true;
+            root_pose_history.clear();
             spdlog::warn("Sensor clock reset; restart external GLIM and submit a new Navigation goal");
         }
         last_measured_tick = tick;
@@ -866,6 +880,7 @@ void State_Navigation::odometry_callback(
     odom_imu.translation() = Eigen::Vector3d(position.x, position.y, position.z);
     const auto root_imu = sensor_kinematics->root_to_sensor(measured.q) * glim_config.lidar_to_imu;
     const sensor_frames::Pose odom_root = odom_imu * root_imu.inverse();
+    if (odom_root.linear().col(0).head<2>().norm() < 1e-6) return;
     std::lock_guard<std::mutex> lock(odometry_mutex);
     if (stamp <= latest_odometry_stamp) return; // repeated/reordered samples cannot refresh freshness
     raw_odometry_position = odom_imu.translation().cast<float>();
@@ -873,6 +888,8 @@ void State_Navigation::odometry_callback(
     latest_odometry_position = odom_root.translation().cast<float>();
     latest_odometry_orientation = Eigen::Quaternionf(odom_root.linear().cast<float>());
     latest_odometry_stamp = stamp;
+    root_pose_history.add({stamp, odom_root.translation().x(), odom_root.translation().y(),
+                           sensor_frames::heading(odom_root)});
     latest_odometry_received_at = std::chrono::steady_clock::now();
     has_odometry = true;
 }
@@ -909,34 +926,22 @@ bool State_Navigation::read_latest_glim_odometry(
 
 bool State_Navigation::read_simulator_pose(LocalizationPose& pose)
 {
-    if (!simulator_state || simulator_state->isTimeout()) {
-        return false;
-    }
-
-    {
-        std::lock_guard<std::mutex> lock(simulator_state->mutex_);
-        const auto& simulator_position = simulator_state->msg_.position();
-        pose.position = Eigen::Vector3f(
-            simulator_position[0],
-            simulator_position[1],
-            simulator_position[2]
-        );
-    }
-    {
-        std::lock_guard<std::mutex> lock(FSMState::lowstate->mutex_);
-        pose.stamp = FSMState::lowstate->msg_.tick() * .001;
-    }
-    pose.orientation = env->robot->data.root_quat_w;
-    if (pose.orientation.squaredNorm() < 1.0e-8f) {
-        return false;
-    }
+    if (!simulator_state || simulator_state->isTimeout()) return false;
+    std::lock_guard<std::mutex> lock(simulator_state->mutex_);
+    const auto& msg = simulator_state->msg_;
+    pose.stamp = msg.stamp().sec() + msg.stamp().nanosec()*1e-9;
+    const auto& p = msg.position();
+    const auto& q = msg.imu_state().quaternion();
+    pose.position = Eigen::Vector3f(p[0],p[1],p[2]);
+    pose.orientation = Eigen::Quaternionf(q[0],q[1],q[2],q[3]);
+    if (!pose.position.allFinite() || !pose.orientation.coeffs().allFinite() ||
+        pose.orientation.norm() < 1e-8) return false;
     pose.orientation.normalize();
+    if (pose.orientation.toRotationMatrix().col(0).head<2>().norm() < 1e-6) return false;
     pose.heading = quaternion_heading(pose.orientation);
     pose.raw_position = pose.position;
     pose.raw_orientation = pose.orientation;
-    return pose.position.allFinite() &&
-        pose.orientation.coeffs().allFinite() &&
-        std::isfinite(pose.heading);
+    return std::isfinite(pose.heading);
 }
 
 bool State_Navigation::read_localization_pose(
@@ -984,9 +989,7 @@ void State_Navigation::reset_navigation_state()
     initial_odometry_heading = 0.0f;
     trajectory_initialized = false;
     active_localization_source.clear();
-#ifdef G1_NAVIGATION_WITH_ROS2
     localization_reset = false;
-#endif
     localization_warning_reported = false;
     goal_warning_reported = false;
     goal_reached = false;
@@ -1021,6 +1024,9 @@ void State_Navigation::set_requested_goal(
     requested_goal.position = Eigen::Vector2f(external_goal.x, external_goal.y);
     requested_goal.yaw = wrap_to_pi(external_goal.yaw);
     requested_marker_search = external_goal.marker_search;
+    requested_observation_stamp = external_goal.observation_stamp;
+    requested_clock_domain = external_goal.clock_domain;
+    goal_received_at = std::chrono::steady_clock::now();
     has_requested_goal = true;
     goal_warning_reported = false;
     spdlog::info(
@@ -1275,7 +1281,7 @@ void State_Navigation::update_navigation_state()
     LocalizationPose localization_pose;
     float odometry_age = 0.0f;
     std::string pose_source;
-    const bool localization_available = read_localization_pose(
+    const bool localization_available = !localization_reset && read_localization_pose(
         localization_pose,
         pose_source,
         odometry_age
@@ -1316,6 +1322,25 @@ void State_Navigation::update_navigation_state()
     }
 
     if (!trajectory_initialized) {
+        if (requested_observation_stamp >= 0) {
+            sensor_frames::PlanarPose image;
+            const bool correct_clock = requested_clock_domain == (param::environment == "sim" ? "simulation" : "ros");
+            if (!correct_clock || !root_pose_history.at(requested_observation_stamp, image)) {
+                command = {0.0f,0.0f,0.0f};
+                set_safe_stand_observations();
+                if (!correct_clock || std::chrono::duration<double>(std::chrono::steady_clock::now()-goal_received_at).count()>2) {
+                    has_requested_goal = false;
+                    spdlog::error("Rejected marker goal: wrong clock or no root odometry bracketing image timestamp {}. Send a fresh observation.", requested_observation_stamp);
+                }
+                return;
+            }
+            const auto goal = sensor_frames::rebase_goal(
+                {requested_observation_stamp,requested_goal.position.x(),requested_goal.position.y(),requested_goal.yaw},
+                image, {localization_pose.stamp,localization_pose.position.x(),localization_pose.position.y(),localization_pose.heading});
+            requested_goal.position = Eigen::Vector2f(goal.x,goal.y);
+            requested_goal.yaw = goal.yaw;
+            spdlog::info("Marker goal rebased from image stamp {} to start stamp {}", requested_observation_stamp,localization_pose.stamp);
+        }
         active_localization_source = pose_source;
         initial_odometry_position = localization_pose.position.head<2>();
         initial_odometry_heading = localization_pose.heading;

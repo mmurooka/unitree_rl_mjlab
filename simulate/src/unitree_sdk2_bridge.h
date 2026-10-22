@@ -228,6 +228,14 @@ public:
         }
         // highstate
         if(highstate->trylock()) {
+            // Evaluation / explicitly selected GLIM-free localization only.
+            // Position, root orientation and timestamp belong to one sample.
+            highstate->msg_.stamp().sec() = static_cast<int32_t>(mj_data_->time);
+            highstate->msg_.stamp().nanosec() = static_cast<uint32_t>(
+                (mj_data_->time - std::floor(mj_data_->time)) * 1e9);
+            if (imu_quat_adr_ >= 0)
+                for (int i=0; i<4; ++i)
+                    highstate->msg_.imu_state().quaternion()[i] = mj_data_->sensordata[imu_quat_adr_ + i];
             if(frame_pos_adr_ >= 0) {
                 highstate->msg_.position()[0] = mj_data_->sensordata[frame_pos_adr_ + 0];
                 highstate->msg_.position()[1] = mj_data_->sensordata[frame_pos_adr_ + 1];

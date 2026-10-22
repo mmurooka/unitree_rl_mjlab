@@ -177,7 +177,13 @@ void NavigationGoalService::receive()
             Goal goal;
             bool valid = false;
             stream >> verb;
-            if (verb == "GOAL") {
+            if (verb == "GOAL" || verb == "GOAL_AT") {
+                if (verb == "GOAL_AT") {
+                    stream >> goal.clock_domain >> goal.observation_stamp;
+                    if ((goal.clock_domain != "simulation" && goal.clock_domain != "ros") ||
+                        !std::isfinite(goal.observation_stamp) || goal.observation_stamp < 0)
+                        stream.setstate(std::ios::failbit);
+                }
                 valid =
                     bool(stream >> goal.x >> goal.y >> goal.yaw) &&
                     !(stream >> extra) &&
@@ -198,7 +204,7 @@ void NavigationGoalService::receive()
                 }
             }
             if (!valid) {
-                reply = "ERROR expected GOAL x y yaw or SEARCH backoff yaw "
+                reply = "ERROR expected GOAL x y yaw, GOAL_AT clock stamp x y yaw or SEARCH backoff yaw "
                         "with finite values";
             } else {
                 std::shared_ptr<Request> request;

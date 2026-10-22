@@ -132,4 +132,51 @@ public:
         return states.empty() ? -INFINITY : states.back().stamp;
     }
 };
+// Planar poses are derived from the same root origin/forward-axis definition
+// used by marker recognition. Never interpolate across clock epochs or gaps.
+struct PlanarPose { double stamp, x, y, yaw; };
+inline double wrap(double a) { return std::atan2(std::sin(a), std::cos(a)); }
+inline PlanarPose rebase_goal(const PlanarPose& goal, const PlanarPose& image,
+                             const PlanarPose& start) {
+    const double dx = image.x + std::cos(image.yaw)*goal.x - std::sin(image.yaw)*goal.y - start.x;
+    const double dy = image.y + std::sin(image.yaw)*goal.x + std::cos(image.yaw)*goal.y - start.y;
+    return {start.stamp, std::cos(start.yaw)*dx + std::sin(start.yaw)*dy,
+            -std::sin(start.yaw)*dx + std::cos(start.yaw)*dy,
+            wrap(image.yaw + goal.yaw - start.yaw)};
+}
+class PoseHistory {
+    mutable std::mutex mutex;
+    std::deque<PlanarPose> poses;
+public:
+    void clear() { std::lock_guard<std::mutex> lock(mutex); poses.clear(); }
+    bool add(PlanarPose p) {
+        if (!std::isfinite(p.stamp) || !std::isfinite(p.x) || !std::isfinite(p.y) || !std::isfinite(p.yaw))
+            return false;
+        std::lock_guard<std::mutex> lock(mutex);
+        const bool reset = !poses.empty() && p.stamp < poses.back().stamp;
+        if (reset) poses.clear();
+        if (!poses.empty() && p.stamp == poses.back().stamp) return false;
+        poses.push_back(p);
+        while (poses.size()>1 && poses.front().stamp < p.stamp-5) poses.pop_front();
+        return reset;
+    }
+    bool at(double stamp, PlanarPose& out) const {
+        std::lock_guard<std::mutex> lock(mutex);
+        // No extrapolation: wait for odometry to bracket the image time.
+        if (!std::isfinite(stamp) || poses.empty() || stamp < poses.front().stamp || stamp > poses.back().stamp)
+            return false;
+        if (stamp == poses.front().stamp) { out=poses.front(); return true; }
+        for (size_t i=1;i<poses.size();++i) {
+            const auto& a=poses[i-1]; const auto& b=poses[i];
+            if (stamp == b.stamp) { out=b; return true; }
+            if (stamp < b.stamp) {
+                if (b.stamp-a.stamp > .3) return false;
+                const double t=(stamp-a.stamp)/(b.stamp-a.stamp);
+                out={stamp, a.x+t*(b.x-a.x), a.y+t*(b.y-a.y), wrap(a.yaw+t*wrap(b.yaw-a.yaw))};
+                return true;
+            }
+        }
+        return false;
+    }
+};
 } // namespace sensor_frames
