@@ -1,10 +1,18 @@
 #include "NavigationGoalService.h"
+#include "../../../../common/navigation_curve.h"
 
 #include <cmath>
 #include <chrono>
 #include <sstream>
 
 std::shared_ptr<NavigationGoalService> navigation_goal_service;
+
+void NavigationGoalService::set_preview_tangent_scale(float scale)
+{
+    if (!std::isfinite(scale) || scale <= 0) throw std::runtime_error("Invalid preview tangent scale");
+    std::lock_guard<std::mutex> lock(mutex_);
+    preview_tangent_scale_ = scale;
+}
 
 void NavigationGoalService::update_view_root(nlohmann::json root)
 {
@@ -213,7 +221,28 @@ void NavigationGoalService::receive()
 
         std::string reply;
         const std::string command = message.to_string();
-        if (command == "VIEW") {
+        if (command.rfind("PLAN ", 0) == 0) {
+            float x, y, yaw;
+            std::string extra;
+            std::istringstream input(command.substr(5));
+            if (!(input >> x >> y >> yaw) || (input >> extra) ||
+                !std::isfinite(x) || !std::isfinite(y) || !std::isfinite(yaw)) {
+                reply = "ERROR expected PLAN x y yaw with finite values";
+            } else {
+                std::lock_guard<std::mutex> lock(mutex_);
+                if (preview_tangent_scale_ <= 0) reply = "ERROR Navigation planner is not initialized";
+                else {
+                    nlohmann::json poses=nlohmann::json::array();
+                    for (int i=0;i<=50;++i) {
+                        const auto [p,heading]=g1::navigation_curve_point(
+                            Eigen::Vector2f(x,y),yaw,preview_tangent_scale_,i/50.0f);
+                        poses.push_back({p.x(),p.y(),heading});
+                    }
+                    reply=nlohmann::json{{"schema",1},{"poses",poses},
+                        {"tangent_scale",preview_tangent_scale_},{"reference_frame","root_yaw"}}.dump();
+                }
+            }
+        } else if (command == "VIEW") {
             std::lock_guard<std::mutex> lock(mutex_);
             auto root = view_root_;
             if (!root.is_null()) root["age_s"] = std::chrono::duration<double>(

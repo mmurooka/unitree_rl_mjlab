@@ -48,6 +48,7 @@ public:
     void update_view_root(nlohmann::json root);
     void update_view_path(nlohmann::json path);
     nlohmann::json view_root();
+    void set_preview_tangent_scale(float scale);
 
 private:
     struct Request {
@@ -71,6 +72,7 @@ private:
     std::string progress_reason_;
     nlohmann::json view_root_, view_path_;
     std::chrono::steady_clock::time_point view_root_received_;
+    float preview_tangent_scale_{0.0f};
     bool accepting_{false};
     bool transitioning_{false};
     std::shared_ptr<Request> request_;

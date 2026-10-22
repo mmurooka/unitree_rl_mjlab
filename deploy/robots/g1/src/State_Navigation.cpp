@@ -1,3 +1,4 @@
+#include "../../../../common/navigation_curve.h"
 #include "State_Navigation.h"
 
 #include <algorithm>
@@ -444,6 +445,7 @@ State_Navigation::State_Navigation(int state_mode, std::string state_string)
             }
         });
     }
+    if (navigation_service) navigation_service->set_preview_tangent_scale(path_tangent_scale);
     spdlog::info("Navigation: environment={}, localization={}, goal frame=root_yaw, timeout={} s",
         param::environment, localization_source, odometry_timeout);
 
@@ -1097,43 +1099,11 @@ void State_Navigation::generate_trajectory(
     // A rearward goal is traversed in reverse, preserving body heading at both
     // ends. Forward-only tangents would loop even for GOAL -0.15 0 0.
     const float travel_sign = goal.position.x() < 0.0f ? -1.0f : 1.0f;
-    {
-        // A cubic Bezier curve honors both the robot's initial forward direction
-        // and the final approach direction. This replaces the old random endpoint
-        // with a smooth path whose endpoint is exactly the externally supplied goal.
-        const Eigen::Vector2f start_position = Eigen::Vector2f::Zero();
-        const float direct_distance = goal.position.norm();
-        const float tangent_length = travel_sign * path_tangent_scale * direct_distance;
-        const Eigen::Vector2f start_control(
-            tangent_length,
-            0.0f
-        );
-        const Eigen::Vector2f goal_control = goal.position - tangent_length *
-            Eigen::Vector2f(std::cos(goal.yaw), std::sin(goal.yaw));
-
-        for (int step = 0; step <= motion_steps; ++step) {
-            const float parameter = path_parameters[step];
-            const float complement = 1.0f - parameter;
-            TrajectoryPose& pose = trajectory_poses[step];
-            pose.position =
-                complement * complement * complement * start_position
-                + 3.0f * complement * complement * parameter * start_control
-                + 3.0f * complement * parameter * parameter * goal_control
-                + parameter * parameter * parameter * goal.position;
-
-            const Eigen::Vector2f tangent =
-                3.0f * complement * complement
-                    * (start_control - start_position)
-                + 6.0f * complement * parameter
-                    * (goal_control - start_control)
-                + 3.0f * parameter * parameter
-                    * (goal.position - goal_control);
-            if (tangent.squaredNorm() > 1.0e-10f) {
-                pose.yaw = wrap_to_pi(std::atan2(travel_sign * tangent.y(), travel_sign * tangent.x()));
-            } else {
-                pose.yaw = wrap_to_pi(parameter * goal.yaw);
-            }
-        }
+    for (int step = 0; step <= motion_steps; ++step) {
+        const auto [position, heading] = g1::navigation_curve_point(
+            goal.position, goal.yaw, path_tangent_scale, path_parameters[step]);
+        trajectory_poses[step].position = position;
+        trajectory_poses[step].yaw = heading;
     }
     // Avoid roundoff at the two boundary conditions used by goal checking.
     trajectory_poses.front() = TrajectoryPose{};

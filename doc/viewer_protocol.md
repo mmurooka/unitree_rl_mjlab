@@ -43,3 +43,9 @@ published. Sim uses the current SDK simulation tick; real uses software wall tim
 A viewer can select a reported frame bracketed by root history and interpolate
 measured posture/root to that stamp, rather than overlaying newest inputs with
 unequal latency. Real hardware capture synchronization is still approximate.
+
+`PLAN x y yaw` on the Navigation endpoint returns a passive root_yaw reference
+curve (51 samples, schema 1, `poses`, `tangent_scale`). It uses the same configured
+Bezier geometry as actual Navigation, without changing mode, progress, or goal
+queues. It has no time parameterization and is not a collision/physics prediction.
+`VIEW.path` remains the actual time-parameterized path adopted after execution.
