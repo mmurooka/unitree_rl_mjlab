@@ -29,6 +29,7 @@ public:
     std::shared_ptr<Request> claim(Mode mode);
     bool prepare_transition(const std::shared_ptr<Request>& request);
     bool transition_ready(Mode mode);
+    std::shared_ptr<Request> transition_request();
     bool started(const std::shared_ptr<Request>& request);
     void reject(const std::shared_ptr<Request>& request, const std::string& reason);
     void finished();

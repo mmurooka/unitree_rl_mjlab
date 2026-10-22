@@ -10,7 +10,10 @@ The candidate is evaluated from current measured state in a reusable second
 inference context, without publishing its output. On acceptance that context
 becomes active and the already computed first action is used once. On rejection,
 the previous held motion and its observation/action history remain intact.
-Velocity/Navigation entry rejection returns to the source policy. No extra
+Velocity/Navigation admission runs before the source exits: rejection leaves
+its policy history, trajectory, goal ID and arm target running unchanged. A
+rejected image-based Navigation goal is not restarted at a new origin/time.
+No extra
 process is started. This checks command continuity, not equal torques across
 policies with different gains, nor disturbance-recovery performance.
 
@@ -19,3 +22,9 @@ same fixed, horizontal foot contacts for every generation. Fits exceeding 2 mm
 position or 0.01 rad orientation residual are rejected instead of silently
 continuing with a drifting support plane. Repeated noisy-ankle fits are tested;
 real repeated manipulation and push recovery still require separate validation.
+
+The optional `G1_BUILD_ONLINE_TESTS` CMake target `test_online_motion` checks
+pre-exit rejection and prepared-action playback using isolated domain 232 and
+test-only topics; it never publishes motor commands. Its 180-degree fixture
+threshold is deliberately test-only. Actual sim/real deployment retains the
+configured 20-degree limit and must be validated separately.

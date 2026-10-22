@@ -25,6 +25,10 @@ public:
     virtual bool prepare_enter() { return true; }
     virtual void cancel_prepare_enter() {}
 
+    // Final synchronous admission check before stopping the current state.
+    // False cancels this transition; it must not reset or exit the source.
+    virtual bool approve_enter() { return true; }
+
     virtual void pre_run() {}
     virtual void run() {}
     virtual void post_run() {}

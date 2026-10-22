@@ -121,6 +121,12 @@ bool OnlineMotionService::transition_ready(Mode mode)
     return request && prepare_transition(request);
 }
 
+std::shared_ptr<OnlineMotionService::Request> OnlineMotionService::transition_request()
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    return transitioning_ ? request_ : nullptr;
+}
+
 bool OnlineMotionService::started(const std::shared_ptr<Request>& request)
 {
     std::lock_guard<std::mutex> lock(mutex_);

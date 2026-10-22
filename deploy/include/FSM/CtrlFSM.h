@@ -86,6 +86,7 @@ private:
 
     void change_state(const std::shared_ptr<BaseState>& next_state)
     {
+        if (!next_state->approve_enter()) return;
         spdlog::info(
             "FSM: Change state from {} to {}",
             currentState->getStateString(),

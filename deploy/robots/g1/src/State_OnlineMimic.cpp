@@ -60,17 +60,45 @@ State_OnlineMimic::~State_OnlineMimic()
 
 bool State_OnlineMimic::start_motion(const std::shared_ptr<OnlineMotionService::Request>& request)
 {
+    std::vector<float> before;
+    {
+        std::lock_guard<std::mutex> lock(action_mutex_);
+        before = target_;
+    }
+    try {
+        return prepare_motion(request, before) && commit_motion(request, before);
+    } catch (const std::exception& error) {
+        service_->reject(request, std::string("ERROR candidate policy inference: ") + error.what());
+        return false;
+    }
+}
+
+bool State_OnlineMimic::approve_enter()
+{
+    prepared_request_.reset();
+    const auto request = service_->transition_request();
+    if (!request) return false;
+    prepared_before_.clear();
+    // FSM run()/publish() just completed. Only this thread writes lowcmd;
+    // the source policy may continue inference while we check the candidate.
+    for (size_t i=0;i<29;++i) prepared_before_.push_back(lowcmd->msg_.motor_cmd()[i].q());
+    try {
+        if (!prepare_motion(request, prepared_before_)) return false;
+    } catch (const std::exception& error) {
+        service_->reject(request, std::string("ERROR candidate policy inference: ") + error.what());
+        return false;
+    }
+    prepared_request_ = request;
+    return true;
+}
+
+bool State_OnlineMimic::prepare_motion(
+    const std::shared_ptr<OnlineMotionService::Request>& request,
+    const std::vector<float>& before)
+{
     if (lowstate->isTimeout()) {
         service_->reject(request, "ERROR measured state unavailable for candidate policy inference");
         return false;
-    }
-    std::vector<float> before;
-    if (running_) {
-        std::lock_guard<std::mutex> lock(action_mutex_);
-        before = target_;
-    } else {
-        // Called on the FSM thread after the source policy has stopped.
-        for (size_t i=0;i<29;++i) before.push_back(lowcmd->msg_.motor_cmd()[i].q());
     }
     const auto previous_motion = State_Mimic::motion;
     try {
@@ -91,6 +119,14 @@ bool State_OnlineMimic::start_motion(const std::shared_ptr<OnlineMotionService::
         service_->reject(request, error);
         return false;
     }
+    return true;
+}
+
+bool State_OnlineMimic::commit_motion(
+    const std::shared_ptr<OnlineMotionService::Request>& request,
+    const std::vector<float>& before)
+{
+    const auto after = candidate_tracking_->action_manager->processed_actions();
     if (!service_->started(request)) return false;
     float command_change = 0.0f;
     for (size_t i=0;i<before.size();++i) command_change = std::max(command_change, std::abs(before[i]-after[i]));
@@ -131,8 +167,11 @@ void State_OnlineMimic::enter()
     }
     auto request = service_->activate_mimic(source_mode_);
     try {
-        // Check again after the source policy thread has stopped.
-        if (!request || !start_motion(request)) {
+        // No source run()/publication occurs between approve_enter() and here.
+        // Reuse the checked candidate, rather than inferring a different first command.
+        const bool prepared = request && request == prepared_request_;
+        prepared_request_.reset();
+        if (!prepared || !commit_motion(request, prepared_before_)) {
             service_->deactivate();
             request_return_to_source();
             return;

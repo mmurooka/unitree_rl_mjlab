@@ -10,6 +10,7 @@ class State_OnlineMimic : public FSMState
 public:
     State_OnlineMimic(int state_mode, std::string state_string);
     ~State_OnlineMimic();
+    bool approve_enter() override;
     void enter() override;
     void run() override;
     void exit() override;
@@ -17,6 +18,10 @@ public:
 private:
     using Loader = OnlineMotionService::Loader;
     bool start_motion(const std::shared_ptr<OnlineMotionService::Request>& request);
+    bool prepare_motion(const std::shared_ptr<OnlineMotionService::Request>& request,
+                        const std::vector<float>& before);
+    bool commit_motion(const std::shared_ptr<OnlineMotionService::Request>& request,
+                       const std::vector<float>& before);
     void request_return_to_source();
     void control();
     void publish_action();
@@ -25,6 +30,8 @@ private:
     std::unique_ptr<isaaclab::ManagerBasedRLEnv> tracking_;
     std::unique_ptr<isaaclab::ManagerBasedRLEnv> candidate_tracking_;
     bool prepared_action_{false};
+    std::shared_ptr<OnlineMotionService::Request> prepared_request_;
+    std::vector<float> prepared_before_;
     std::shared_ptr<Loader> playing_;
     size_t tick_ = 0;
     bool holding_ = false;
