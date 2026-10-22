@@ -158,8 +158,17 @@ void OnlineMotionService::finished()
 
 void OnlineMotionService::update_view_frame(int frame)
 {
+    double stamp = std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch()).count();
+    if (param::environment == "sim" && FSMState::lowstate) {
+        std::lock_guard<std::mutex> state_lock(FSMState::lowstate->mutex_);
+        stamp = FSMState::lowstate->msg_.tick()*.001;
+    }
     std::lock_guard<std::mutex> lock(mutex_);
-    if (!playback_view_.is_null()) playback_view_["frame"] = frame;
+    if (!playback_view_.is_null()) {
+        playback_view_["frame"] = frame;
+        playback_view_["stamp"] = stamp;
+        playback_view_["clock_domain"] = param::environment == "sim" ? "simulation" : "ros_receipt_approx";
+    }
 }
 
 std::string OnlineMotionService::command_start_error(
@@ -181,7 +190,13 @@ void OnlineMotionService::receive()
         if (!socket_.recv(message, zmq::recv_flags::none)) continue;
         std::string reply;
         const std::string command = message.to_string();
-        if (command == "VIEW") {
+        if (command == "METADATA") {
+            reply = nlohmann::json{{"schema", 1}, {"environment", param::environment},
+                {"localization_source", param::navigation_localization_source}, {"domain_id", param::domain_id},
+                {"project_dir", param::proj_dir.string()}, {"config_yaml", YAML::Dump(param::config)},
+                {"sensor_model", param::sensor_model_path}, {"glim_config", param::glim_config_path},
+                {"executable", param::bin_path.string()}}.dump();
+        } else if (command == "VIEW") {
             nlohmann::json view;
             {
                 std::lock_guard<std::mutex> lock(mutex_);

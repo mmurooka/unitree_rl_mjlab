@@ -34,3 +34,12 @@ Absolute reference translation is not a policy tracking command. A reference mod
 placed at the measured start root is a visualization alignment. The actual policy
 output can deviate; the reference is not a prediction of contact or task success.
 The simulator does not generate extra truth transforms for these snapshots.
+
+`METADATA` on the motion endpoint is also read-only. It returns effective controller
+YAML, selected source/environment/domain, project/executable paths, sensor-model
+path and external GLIM directory for recording identity. It does not load a motion.
+Playback VIEW includes `stamp` and `clock_domain` sampled when the policy frame is
+published. Sim uses the current SDK simulation tick; real uses software wall time.
+A viewer can select a reported frame bracketed by root history and interpolate
+measured posture/root to that stamp, rather than overlaying newest inputs with
+unequal latency. Real hardware capture synchronization is still approximate.
