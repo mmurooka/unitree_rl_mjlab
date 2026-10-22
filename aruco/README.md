@@ -63,3 +63,9 @@ outer edge (12 cm in the supplied configuration), excluding the quiet zone.
 
 Tests: `python -m unittest discover -s aruco -p test_frame_pose_publisher.py`
 and `python -m unittest discover -s tests -p test_robot_frames.py`.
+
+The real bridge requires decoded dimensions to match its calibration by default.
+Use `--allow-intrinsics-resize` only after confirming full-image resize semantics.
+`--save-on-exit frame.png` also saves calibration/stream metadata beside the image.
+See the [calibration audit](../doc/camera_calibration_audit.md); the supplied real
+intrinsics remain optically unverified. Static TF is now off by default.
