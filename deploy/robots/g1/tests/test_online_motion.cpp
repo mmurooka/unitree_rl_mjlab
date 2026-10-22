@@ -56,6 +56,9 @@ int main(int argc, char** argv) {
         return receive();
     };
     const std::string load = std::string("LOAD\n") + argv[2];
+    const auto inactive_view = nlohmann::json::parse(request("VIEW"));
+    check(inactive_view["schema"] == 1 && inactive_view["playback"].is_null(), "VIEW never queues playback");
+    check(inactive_view["measured"]["q"].size() == 29, "VIEW exposes measured SDK joints while inactive");
     auto claim = [&](OnlineMotionService::Mode mode) {
         const auto deadline=Clock::now()+std::chrono::seconds(5);
         while (!online_motion_service->transition_ready(mode)) {
@@ -83,6 +86,9 @@ int main(int argc, char** argv) {
         else online_motion_service->leave_navigation();
         state.enter();
         check(receive()=="STARTED", "prepared candidate starts after source exit");
+        const auto playing_view = nlohmann::json::parse(request("VIEW"));
+        check(playing_view["playback"]["path"] == argv[2], "VIEW identifies exact converted reference");
+        check(playing_view["playback"]["num_frames"] == fixture->num_frames, "VIEW reports policy frame count");
         check(request(load)=="BUSY", "playing motion is not replaced");
         const auto deadline=Clock::now()+std::chrono::seconds(15);
         while (request("STATUS")=="BUSY") {
@@ -90,6 +96,9 @@ int main(int argc, char** argv) {
             std::this_thread::sleep_for(std::chrono::milliseconds(20));
         }
         check(request("STATUS")=="READY", "final reference holds and accepts requests");
+        const auto held_view = nlohmann::json::parse(request("VIEW"));
+        check(held_view["playback"]["id"] == playing_view["playback"]["id"], "playback ID survives hold");
+        check(held_view["playback"]["frame"] == fixture->num_frames-1, "VIEW follows actual frame rather than wall-time animation");
         state.exit();
         check(State_Mimic::motion->frame == fixture->num_frames-1, "final reference frame held");
         check(State_Mimic::motion->joint_vel().isZero(), "held reference velocity is zero");

@@ -5,6 +5,7 @@
 #include <future>
 #include <mutex>
 #include <zmq.hpp>
+#include <nlohmann/json.hpp>
 
 // One receiver shared by Velocity, Navigation, and OnlineMimic; it never runs
 // a policy.
@@ -17,6 +18,7 @@ public:
         std::shared_ptr<Loader> motion;
         std::promise<std::string> result;
         bool claimed = false;
+        std::string path;
     };
     explicit OnlineMotionService(const YAML::Node& cfg);
     ~OnlineMotionService();
@@ -33,6 +35,7 @@ public:
     bool started(const std::shared_ptr<Request>& request);
     void reject(const std::shared_ptr<Request>& request, const std::string& reason);
     void finished();
+    void update_view_frame(int frame);
     std::string command_start_error(const std::vector<float>& before, const std::vector<float>& after) const;
 
 private:
@@ -42,6 +45,8 @@ private:
     void cancel_locked(const std::string& reason);
     std::string status_locked() const;
     float threshold_;
+    nlohmann::json playback_view_;
+    uint64_t next_playback_id_{0};
     std::mutex mutex_;
     Mode mode_ = Mode::Inactive;
     Mode transition_source_ = Mode::Inactive;

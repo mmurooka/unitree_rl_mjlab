@@ -1,5 +1,6 @@
 #include "OnlineMotionService.h"
 #include "CommandContinuity.h"
+#include "NavigationGoalService.h"
 #include <iomanip>
 #include <sstream>
 
@@ -7,6 +8,7 @@ std::shared_ptr<OnlineMotionService> online_motion_service;
 
 OnlineMotionService::OnlineMotionService(const YAML::Node& cfg)
 {
+    next_playback_id_ = std::chrono::steady_clock::now().time_since_epoch().count();
     threshold_ = cfg["start_joint_threshold_degrees"].as<float>(20.0f) *
                  3.14159265358979323846f / 180.0f;
     if (!std::isfinite(threshold_) || threshold_ <= 0) {
@@ -131,6 +133,9 @@ bool OnlineMotionService::started(const std::shared_ptr<Request>& request)
 {
     std::lock_guard<std::mutex> lock(mutex_);
     if (mode_ != Mode::Mimic || request_ != request) return false;
+    playback_view_ = {{"id", std::to_string(++next_playback_id_)}, {"path", request->path},
+        {"frame", 0}, {"num_frames", request->motion->num_frames}, {"fps", 50.0},
+        {"root_at_start", navigation_goal_service ? navigation_goal_service->view_root() : nlohmann::json(nullptr)}};
     request_->result.set_value("STARTED");
     request_.reset();
     accepting_ = false;
@@ -149,6 +154,12 @@ void OnlineMotionService::finished()
 {
     std::lock_guard<std::mutex> lock(mutex_);
     if (mode_ == Mode::Mimic && !request_) accepting_ = true;
+}
+
+void OnlineMotionService::update_view_frame(int frame)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (!playback_view_.is_null()) playback_view_["frame"] = frame;
 }
 
 std::string OnlineMotionService::command_start_error(
@@ -170,7 +181,31 @@ void OnlineMotionService::receive()
         if (!socket_.recv(message, zmq::recv_flags::none)) continue;
         std::string reply;
         const std::string command = message.to_string();
-        if (command == "STATUS") {
+        if (command == "VIEW") {
+            nlohmann::json view;
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                view = {{"schema", 1}, {"status", status_locked()}, {"mode", static_cast<int>(mode_)},
+                        {"playback", playback_view_}, {"measured", nullptr}};
+            }
+            auto state = FSMState::lowstate;
+            if (state && !state->isTimeout()) {
+                std::lock_guard<std::mutex> lock(state->mutex_);
+                const auto& msg = state->msg_;
+                std::vector<float> joints, velocities;
+                for (size_t i=0;i<29;++i) {
+                    joints.push_back(msg.motor_state()[i].q());
+                    velocities.push_back(msg.motor_state()[i].dq());
+                }
+                const auto& q = msg.imu_state().quaternion();
+                view["measured"] = {{"q", joints}, {"dq", velocities},
+                    {"quaternion_wxyz", {q[0],q[1],q[2],q[3]}}, {"tick_ms", msg.tick()},
+                    {"clock_domain", param::environment == "sim" ? "simulation" : "ros_receipt_approx"},
+                    {"stamp", param::environment == "sim" ? msg.tick()*.001 :
+                        std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch()).count()}};
+            }
+            reply = view.dump();
+        } else if (command == "STATUS") {
             std::lock_guard<std::mutex> lock(mutex_);
             reply = status_locked();
         } else if (command == "JOINT_POSITIONS") {
@@ -200,6 +235,7 @@ void OnlineMotionService::receive()
                 reply = status_locked();
                 if (reply == "READY") {
                     request = std::make_shared<Request>();
+                    request->path = command.substr(5);
                     request_ = request;
                 }
             }

@@ -1,5 +1,6 @@
 """Real local IPC protocol, no robot interfaces."""
 import subprocess
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -28,6 +29,10 @@ class NavigationProtocolTest(unittest.TestCase):
                         sock.send_string(cmd)
                         return sock.recv_string()
                     self.assertEqual(request('PROGRESS'), 'IDLE 0')
+                    view = json.loads(request('VIEW'))
+                    self.assertEqual(view['root']['source'], 'simulator')
+                    self.assertIsNone(view['path'])
+                    self.assertEqual(request('PROGRESS'), 'IDLE 0')
                     last_id = 0
                     for cmd, state in (
                         ('GOAL_AT simulation 12.5 1 2 .3', 'REACHED'),
@@ -46,6 +51,10 @@ class NavigationProtocolTest(unittest.TestCase):
                             self.assertEqual(line[:2], ['simulation', '12.5'])
                         progress = request('PROGRESS').split()
                         self.assertEqual(progress[:2], [state, str(goal_id)])
+                        view = json.loads(request('VIEW'))
+                        self.assertEqual(view['path']['goal_id'], str(goal_id))
+                        self.assertEqual(view['goal_id'], str(goal_id))
+                        self.assertEqual(view['progress'], state)
                     for cmd in ('GOAL_AT unknown 12 1 2 3', 'GOAL_AT ros -1 1 2 3',
                                 'GOAL_AT ros nan 1 2 3', 'GOAL_AT ros 12 1 2',
                                 'GOAL 1 2 3 extra', 'SEARCH .1 1.57'):

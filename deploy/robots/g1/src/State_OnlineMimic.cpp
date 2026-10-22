@@ -247,6 +247,7 @@ void State_OnlineMimic::control()
         else tracking_->step();
         bad_orientation_ = isaaclab::mdp::bad_orientation(tracking_.get(), 1.0);
         publish_action();
+        service_->update_view_frame(playing_->frame);
         if (holding_ && tick_ == static_cast<size_t>(playing_->num_frames)) {
             service_->finished();
             if (navigation_service_) {

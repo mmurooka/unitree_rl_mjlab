@@ -6,6 +6,30 @@
 
 std::shared_ptr<NavigationGoalService> navigation_goal_service;
 
+void NavigationGoalService::update_view_root(nlohmann::json root)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (view_root_.is_null() || view_root_["stamp"] != root["stamp"]) {
+        view_root_ = std::move(root);
+        view_root_received_ = std::chrono::steady_clock::now();
+    }
+}
+
+void NavigationGoalService::update_view_path(nlohmann::json path)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    view_path_ = std::move(path);
+}
+
+nlohmann::json NavigationGoalService::view_root()
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto root = view_root_;
+    if (!root.is_null()) root["age_s"] = std::chrono::duration<double>(
+        std::chrono::steady_clock::now()-view_root_received_).count();
+    return root;
+}
+
 NavigationGoalService::NavigationGoalService(const YAML::Node& cfg)
     : next_id_(std::chrono::steady_clock::now().time_since_epoch().count())
 {
@@ -156,6 +180,7 @@ void NavigationGoalService::accept_locked(Goal& goal)
     goal = request_->goal;
     goal.id = ++next_id_;
     active_id_ = goal.id;
+    view_path_ = nullptr;
     progress_ = "RUNNING";
     progress_reason_.clear();
     request_->result.set_value("STARTED " + std::to_string(goal.id));
@@ -188,7 +213,15 @@ void NavigationGoalService::receive()
 
         std::string reply;
         const std::string command = message.to_string();
-        if (command == "STATUS") {
+        if (command == "VIEW") {
+            std::lock_guard<std::mutex> lock(mutex_);
+            auto root = view_root_;
+            if (!root.is_null()) root["age_s"] = std::chrono::duration<double>(
+                std::chrono::steady_clock::now()-view_root_received_).count();
+            reply = nlohmann::json{{"schema", 1}, {"root", root}, {"path", view_path_},
+                {"goal_id", std::to_string(active_id_)}, {"progress", progress_},
+                {"reason", progress_reason_}, {"status", status_locked()}}.dump();
+        } else if (command == "STATUS") {
             std::lock_guard<std::mutex> lock(mutex_);
             reply = status_locked();
         } else if (command == "PROGRESS") {

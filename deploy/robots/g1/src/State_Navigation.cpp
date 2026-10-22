@@ -432,8 +432,14 @@ State_Navigation::State_Navigation(int state_mode, std::string state_string)
         simulator_history_thread = std::thread([this] {
             while (simulator_history_running) {
                 LocalizationPose p;
-                if (read_simulator_pose(p) && root_pose_history.add({p.stamp,p.position.x(),p.position.y(),p.heading}))
-                    localization_reset = true;
+                if (read_simulator_pose(p)) {
+                    if (root_pose_history.add({p.stamp,p.position.x(),p.position.y(),p.heading}))
+                        localization_reset = true;
+                    if (navigation_service) navigation_service->update_view_root({
+                        {"stamp", p.stamp}, {"clock_domain", "simulation"}, {"source", "simulator"},
+                        {"position", {p.position.x(),p.position.y(),p.position.z()}},
+                        {"quaternion_wxyz", {p.orientation.w(),p.orientation.x(),p.orientation.y(),p.orientation.z()}}});
+                }
                 std::this_thread::sleep_for(std::chrono::milliseconds(5));
             }
         });
@@ -884,6 +890,12 @@ void State_Navigation::odometry_callback(
                            sensor_frames::heading(odom_root)});
     latest_odometry_received_at = std::chrono::steady_clock::now();
     has_odometry = true;
+    if (navigation_service) navigation_service->update_view_root({
+        {"stamp", stamp}, {"clock_domain", param::environment == "sim" ? "simulation" : "ros"},
+        {"source", "glim"},
+        {"position", {latest_odometry_position.x(),latest_odometry_position.y(),latest_odometry_position.z()}},
+        {"quaternion_wxyz", {latest_odometry_orientation.w(),latest_odometry_orientation.x(),
+                             latest_odometry_orientation.y(),latest_odometry_orientation.z()}}});
 }
 #endif
 
@@ -1325,6 +1337,17 @@ void State_Navigation::update_navigation_state()
             return;
         }
         trajectory_initialized = true;
+        if (navigation_service) {
+            nlohmann::json poses = nlohmann::json::array();
+            for (const auto& pose : trajectory_poses)
+                poses.push_back({pose.position.x(),pose.position.y(),pose.yaw});
+            navigation_service->update_view_path({
+                {"goal_id", std::to_string(requested_goal_id)},
+                {"anchor", {initial_odometry_position.x(),initial_odometry_position.y(),
+                             localization_pose.position.z(),initial_odometry_heading}},
+                {"stamp", localization_pose.stamp}, {"source", pose_source},
+                {"step_dt", trajectory_step_dt}, {"poses", poses}});
+        }
         spdlog::info(
             "Navigation path frame initialized from {} pose "
             "(x={:.3f}, y={:.3f}, yaw={:.3f}).",

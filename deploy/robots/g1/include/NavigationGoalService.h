@@ -10,6 +10,8 @@
 
 #include <yaml-cpp/yaml.h>
 #include <zmq.hpp>
+#include <nlohmann/json.hpp>
+#include <chrono>
 
 // Receives robot-relative Navigation goals independently of policy states.
 class NavigationGoalService
@@ -42,6 +44,10 @@ public:
     bool consume_navigation_goal(Goal& goal);
     // Terminal results are latched for the latest accepted goal.
     void finish_goal(uint64_t id, bool reached, const std::string& reason = "");
+    // Read-only visualization data uses the same accepted localization/path.
+    void update_view_root(nlohmann::json root);
+    void update_view_path(nlohmann::json path);
+    nlohmann::json view_root();
 
 private:
     struct Request {
@@ -63,6 +69,8 @@ private:
     uint64_t active_id_{0};
     std::string progress_{"IDLE"};
     std::string progress_reason_;
+    nlohmann::json view_root_, view_path_;
+    std::chrono::steady_clock::time_point view_root_received_;
     bool accepting_{false};
     bool transitioning_{false};
     std::shared_ptr<Request> request_;
