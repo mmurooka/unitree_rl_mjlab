@@ -76,6 +76,7 @@ target_link_libraries(g1_ctrl PRIVATE ${PROJECT_NAME}_lib)
 
 option(G1_BUILD_ONLINE_TESTS "Build isolated online motion smoke test (no motor publisher)" OFF)
 if(G1_BUILD_ONLINE_TESTS)
+  add_executable(replay_mimic_admission tests/replay_mimic_admission.cpp)
   add_executable(test_online_motion tests/test_online_motion.cpp)
   target_link_libraries(test_online_motion PRIVATE ${PROJECT_NAME}_lib)
 endif()

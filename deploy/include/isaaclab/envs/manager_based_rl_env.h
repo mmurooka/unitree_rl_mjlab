@@ -60,12 +60,13 @@ public:
         observation_manager->reset();
     }
 
-    void step()
+    void step(std::unordered_map<std::string, std::vector<float>>* observation_trace = nullptr)
     {
         episode_length += 1;
         robot->update();
         auto obs = observation_manager->compute();
         auto action = alg->act(obs);
+        if (observation_trace) *observation_trace = obs;
         action_manager->process_action(action);
     }
 

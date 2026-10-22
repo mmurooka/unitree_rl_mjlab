@@ -101,13 +101,34 @@ bool State_OnlineMimic::prepare_motion(
         return false;
     }
     const auto previous_motion = State_Mimic::motion;
+    std::unordered_map<std::string, std::vector<float>> observation_trace;
+    const bool trace = param::config["FSM"]["OnlineMimic"]["log_admission_trace"].as<bool>(false);
     try {
         State_Mimic::motion = request->motion;
         candidate_tracking_->robot->update();
         request->motion->reset(candidate_tracking_->robot->data);
         align_mimic_heading(candidate_tracking_.get());
         candidate_tracking_->reset();
-        candidate_tracking_->step();
+        // last_action describes the command that actually preceded this inference,
+        // even when a different policy produced it. Express it in this policy's
+        // raw action units; measured positions are not a substitute for commands.
+        const auto action_cfg = candidate_tracking_->cfg["actions"];
+        if (action_cfg.size() != 1 || !action_cfg["JointPositionAction"] || before.size() != 29)
+            throw std::runtime_error("Online handoff requires one 29-joint position action");
+        const auto joint_cfg = action_cfg["JointPositionAction"];
+        const auto scales = joint_cfg["scale"].as<std::vector<float>>();
+        const auto offsets = joint_cfg["offset"].as<std::vector<float>>();
+        if (scales.size() != before.size() || offsets.size() != before.size())
+            throw std::runtime_error("Invalid handoff action scale/offset");
+        std::vector<float> previous_action(before.size());
+        for (size_t i=0;i<before.size();++i) {
+            if (!std::isfinite(before[i]) || !std::isfinite(scales[i]) || scales[i] == 0 || !std::isfinite(offsets[i]))
+                throw std::runtime_error("Non-finite handoff command or invalid action scale");
+            previous_action[i] = (before[i]-offsets[i])/scales[i];
+        }
+        candidate_tracking_->action_manager->process_action(previous_action);
+        candidate_tracking_->observation_manager->reset();
+        candidate_tracking_->step(trace ? &observation_trace : nullptr);
     } catch (...) {
         State_Mimic::motion = previous_motion;
         throw;
@@ -115,6 +136,16 @@ bool State_OnlineMimic::prepare_motion(
     State_Mimic::motion = previous_motion;
     const auto after = candidate_tracking_->action_manager->processed_actions();
     const auto error = service_->command_start_error(before, after);
+    if (trace) {
+        const nlohmann::json audit = {
+            {"schema", 1}, {"path", request->path}, {"observations", observation_trace},
+            {"before_commands", before}, {"candidate_commands", after},
+            {"result", error.empty() ? "admissible" : error},
+            {"joint_order", "SDK 0..28"}, {"command_unit", "rad"},
+            {"last_action_initialization", "previous command in candidate policy action units"}
+        };
+        spdlog::info("OnlineMimic admission trace: {}", audit.dump());
+    }
     if (!error.empty()) {
         service_->reject(request, error);
         return false;

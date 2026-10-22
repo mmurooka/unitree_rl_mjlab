@@ -32,6 +32,7 @@ int main(int argc, char** argv) {
     auto cfg = param::config["FSM"]["OnlineMimic"];
     cfg["policy_dir"] = argv[3];
     cfg["endpoint"] = endpoint;
+    cfg["log_admission_trace"] = true;
     // Test-only generous limit makes the good fixture independent of policy
     // version; a 1000-rad previous command below must still be rejected.
     cfg["start_joint_threshold_degrees"] = 180;
