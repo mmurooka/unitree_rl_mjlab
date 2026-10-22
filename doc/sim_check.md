@@ -104,3 +104,17 @@ Save the chosen constants and their calibration provenance, then validate them
 with the normal image-based pipeline. Future transport must use those frozen
 constants without reading object truth. This exception does not permit truth
 input to marker recognition or camera transforms.
+
+For an offline odometry comparison, use `scripts/evaluate_navigation_frames.py`:
+
+```bash
+python scripts/evaluate_navigation_frames.py /path/to/run/poses.jsonl \
+  /path/to/run/01_box_navigation_pose.csv /path/to/run/05_table_navigation_pose.csv \
+  --anchor-world 1 0 0 --output /path/to/run/frame_evaluation.json
+```
+
+The anchor is the fixed pickup-table origin in this scene (world x/y/yaw).
+This is evaluation truth only. Timestamp-matched root poses are aligned once
+in XY and yaw at the first sample, preserving subsequent drift and directional
+errors. The output reports missing samples and rejects mixed source files.
+These errors describe ideal simulated sensors, not real-world calibration.
