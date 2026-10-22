@@ -219,11 +219,9 @@ Navigation is started externally with TaskPromptRL's
 `scripts/send_navigation_goal.py`. The script selects a `frame_name` from
 `/frame_pose_list` and generates a goal `offset` metres before its local
 +x-facing side, with the goal yaw matching the frame yaw. If the selected
-ArUco marker is initially outside the simulated camera view, the script reads
-its coarse direction from `/frame_pose_list_ground_truth`, starts turning while
-backing up slightly, and replaces that goal using the marker pose once it
-becomes visible.
-The truth pose is not used for the final approach. Sending from
+ArUco marker is initially outside the camera view, use an explicit search
+direction (`--search-yaw`) to turn while backing up slightly, then use the
+observed marker pose. Object truth is reserved for evaluation. Sending from
 Velocity or a finished/holding OnlineMimic automatically enters Navigation;
 sending during Navigation replaces the active goal. OnlineMimic reports `BUSY`
 until its motion has finished.
@@ -232,7 +230,7 @@ uses them as its arm command, preserving a lifted posture without pickup/place
 iteration state.
 
 On the real robot, the controller subscribes to `/glim_ros/odom`
-(`nav_msgs/msg/Odometry`) and uses its planar position and yaw instead of
+(`nav_msgs/msg/Odometry`) and converts it to the pelvis pose before computing displacement, instead of
 integrating the issued velocity command. It waits with a zero navigation
 command when the selected localization source is unavailable, and stops when
 updates exceed `odometry_timeout` (0.5 s by default). Localization sources,
@@ -242,33 +240,17 @@ topics, and timeouts are configured in the selected Navigation policy's
 The current trajectory actor has 120 inputs, including the 14-joint arm target
 and future path observations.
 
-For ordinary sim2sim, `localization_source: auto` falls back to the MuJoCo
-truth position published on `rt/sportmodestate`; yaw comes from the simulated
-IMU in `rt/lowstate`. GLIM is preferred when both inputs are available. The
-selected source is fixed until Navigation is exited, preventing a coordinate
-frame change while walking. Set `localization_source` explicitly to `glim` or
-`simulator` when automatic selection is not desired.
+Select `--navigation-localization-source glim|simulator` explicitly. There is
+no auto selection or truth fallback. Use `--environment sim` for simulation;
+`real + simulator` is rejected. GLIM poses are converted from the sensor IMU
+into the pelvis frame using the full model mount and timestamped measured
+waist angles. ArUco uses measured kinematics independently of GLIM.
 
-To reproduce the physical localization path with the simulated MID-360, start:
-
-```bash
-source /opt/ros/jazzy/setup.bash
-.venv-ar/bin/python scripts/run_glim_simulation.py
-python scripts/run_online_deploy.py \
-  --navigation-localization-source glim
-```
-
-The first command starts MuJoCo, GLIM, and the ArUco detector. The second
-forces Navigation to consume `/glim_ros/odom` and disables truth fallback for
-that process. See `simulate/README.md` for the combined `--with-deploy` mode
-and configuration details.
-
-Build from a shell where the ROS 2 environment is sourced. The stock G1
-`livox_frame` points opposite the robot's planar forward direction, so the
-Navigation policy configuration applies `odometry_heading_offset: pi`. Use
-the same correction in `frame_pose_publisher.py --glim`; change both values
-together for a different sensor frame. Test suspended and in
-`unitree_mujoco` before running on the physical robot.
+GLIM runs externally with the same configuration in sim and real. Pass the
+same directory as `--glim-config` to the controller and simulator. Follow the
+[individual startup commands](doc/sim_real_workflow.md), including Velocity
+before releasing the hang. Sim-only GLIM settings and its combined launcher
+have been removed. Build from a shell with the ROS environment sourced.
 
 ### 3.3 Simulation Deployment
 

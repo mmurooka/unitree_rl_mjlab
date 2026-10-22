@@ -24,6 +24,7 @@ include_directories(
   mujoco/include
   mujoco/simulate
   src/lodepng
+  ${PROJECT_SOURCE_DIR}/../common
 )
 link_directories(mujoco/lib)
 

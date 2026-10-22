@@ -351,56 +351,6 @@ private:
         Transform("camera_depth_frame", "camera_depth_optical_frame", 0.0, 0.0, 0.0, 0.5, -0.5, 0.5, -0.5),
         Transform("camera_link", "camera_color_frame", 0.015, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0),
         Transform("camera_color_frame", "camera_color_optical_frame", 0.0, 0.0, 0.0, 0.5, -0.5, 0.5, -0.5)};
-    if (param::config.glim_mode)
-    {
-      const int livox_site_id = mj_name2id(
-          model, mjOBJ_SITE, param::config.mid360_frame_id.c_str());
-      const int camera_body_id = mj_name2id(model, mjOBJ_BODY, "camera_link");
-      if (livox_site_id < 0 || camera_body_id < 0)
-      {
-        throw std::runtime_error(
-            "GLIM mode requires livox_frame and camera_link in the MuJoCo model");
-      }
-      const int torso_body_id = model->site_bodyid[livox_site_id];
-      if (model->body_parentid[camera_body_id] != torso_body_id)
-      {
-        throw std::runtime_error(
-            "GLIM mode requires livox_frame and camera_link to share a parent");
-      }
-
-      mjtNum inverse_livox_quaternion[4];
-      mju_negQuat(
-          inverse_livox_quaternion,
-          model->site_quat + 4 * livox_site_id);
-      mjtNum livox_to_camera_quaternion[4];
-      mju_mulQuat(
-          livox_to_camera_quaternion,
-          inverse_livox_quaternion,
-          model->body_quat + 4 * camera_body_id);
-      const mjtNum camera_delta[3] = {
-          model->body_pos[3 * camera_body_id] -
-              model->site_pos[3 * livox_site_id],
-          model->body_pos[3 * camera_body_id + 1] -
-              model->site_pos[3 * livox_site_id + 1],
-          model->body_pos[3 * camera_body_id + 2] -
-              model->site_pos[3 * livox_site_id + 2],
-      };
-      mjtNum livox_to_camera_position[3];
-      mju_rotVecQuat(
-          livox_to_camera_position,
-          camera_delta,
-          inverse_livox_quaternion);
-      transforms.push_back(Transform(
-          param::config.mid360_frame_id,
-          "camera_link",
-          livox_to_camera_position[0],
-          livox_to_camera_position[1],
-          livox_to_camera_position[2],
-          livox_to_camera_quaternion[0],
-          livox_to_camera_quaternion[1],
-          livox_to_camera_quaternion[2],
-          livox_to_camera_quaternion[3]));
-    }
     for (auto &tf : transforms) tf.header.stamp = stamp;
     tf_broadcaster_->sendTransform(transforms);
   }

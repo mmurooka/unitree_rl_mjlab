@@ -25,55 +25,15 @@ disable both sensor simulations:
 ./build/unitree_mujoco --disable-lidar --disable-camera
 ```
 
-## Real-robot-style GLIM mode
+## GLIM and GLIM-free workflows
 
-Use the repository launcher when Navigation behavior must be tested through
-the same localization path as the physical G1:
-
-```bash
-source /opt/ros/jazzy/setup.bash
-.venv-ar/bin/python scripts/run_glim_simulation.py
-```
-
-Run that command from the repository root. It starts:
-
-1. GLIM with a complete copy of the installed configuration plus the
-   simulation-specific ROS and sensor overrides in
-   `SLAM/GLIM_config_sim`.
-2. `unitree_mujoco --glim`, including the MID-360 and D435.
-3. `aruco/frame_pose_publisher.py --glim`.
-
-The resulting Navigation path is
-`/livox/lidar` + `/livox/imu` -> GLIM -> `/glim_ros/odom` -> the G1
-controller. Unlike ordinary sim2sim, MuJoCo ground-truth localization is not
-used when the controller is launched with:
-
-```bash
-python scripts/run_online_deploy.py \
-  --navigation-localization-source glim
-```
-
-Alternatively, pass `--with-deploy` to the GLIM simulation launcher when the
-current Python environment contains all deploy dependencies. The controller
-waits with zero Navigation commands until GLIM odometry becomes available.
-
-`--glim` also changes the simulated TF ownership to match the real robot:
-GLIM publishes `odom -> livox_frame`, while the D435 simulator publishes the
-static `livox_frame -> camera_link` mount. The old MuJoCo truth
-`imu_yaw -> camera_link` transform is suppressed, avoiding a camera frame
-with two parents.
-
-MuJoCo accelerometer values are already in m/s², so this mode uses
-`acc_scale: 1.0`; the physical Livox configuration that scales values
-reported in g must not be reused. The sensor mount in the G1 MJCF uses the
-stock Unitree MID-360 and D435 extrinsics. MID-360 output starts after the
-`startup_delay` in `config.yaml`, keeping the uncontrolled startup transient
-out of GLIM's gravity and bias initialization. The table scene includes room
-walls and a ceiling because a floor-only point cloud cannot constrain planar
-LiDAR translation.
-
-Useful options are `--no-aruco`, `--scene PATH`, `--domain-id N`, and
-`--network INTERFACE`.
+GLIM runs externally, with the same configuration as real hardware. See
+[the sim/real workflow](../doc/sim_real_workflow.md) for individual startup
+commands, including the required Velocity-before-hang-release ordering.
+There is no sim-only GLIM configuration or combined GLIM launcher.
+`--glim-config /absolute/path` reads the external sensor settings to match
+simulated IMU placement and topic/frame names. It never starts or modifies GLIM.
+Livox acceleration is published in g in both environments.
 
 ## Table and box scene
 
@@ -97,12 +57,11 @@ The destination table is rotated 90 degrees counterclockwise about the vertical
 axis. The robot must approach the pickup table before lifting the box.
 
 The scene also includes ArUco ID 0 on the robot-facing side of the box and IDs
-1 and 2 on top of the pickup and destination tables. `frame_pose_list.source`
-in `config.yaml` selects either MuJoCo `ground_truth` or the `aruco` image
-pipeline. See [`../aruco/README.md`](../aruco/README.md) for setup and real-camera
-configuration. In `aruco` mode, simulation truth is also published on the
-search-only `/frame_pose_list_ground_truth` topic so an initially hidden target
-can be brought into view before marker-based navigation starts.
+1 and 2 on top of the pickup and destination tables. Recognition always uses
+the camera plus measured joint/IMU data; see [ArUco](../aruco/README.md).
+Object truth is available only on `/evaluation/frame_pose_list` for evaluation.
+It is not a source for goal generation or target search. Robot localization
+truth remains available in the explicitly selected GLIM-free mode.
 
 The box is a free body with contact only (no attachment or scripted motion).
 Its body dimensions are fixed at 0.26 × 0.35 × 0.19 m (x/y/z), matching the
@@ -125,7 +84,8 @@ The MID-360 simulation publishes:
 
 - `/livox/lidar` (`sensor_msgs/msg/PointCloud2`, 10 Hz)
 - `/livox/imu` (`sensor_msgs/msg/Imu`, 200 Hz)
-- frame: `livox_frame`
+- default frame: `livox_frame` (configured labels follow external GLIM settings)
+- linear acceleration: g, matching the Livox driver; external GLIM converts to m/s²
 
 Rays are acquired incrementally, so a cloud contains motion distortion. The
 per-point `timestamp` is in seconds relative to the cloud header timestamp.
@@ -145,7 +105,9 @@ invalid measurement. The simulated camera has no lens distortion or noise.
 `pointcloud_downsample` applies a pixel stride to point-cloud generation while
 leaving the RGB and depth images at their configured resolution.
 
-Sensor mounting transforms are intentionally separate from the sensor drivers.
+For visualization only, sensor mounting transforms are separate from the sensor drivers.
+Recognition and navigation do not use this TF tree. Avoid adding a second parent
+for the IMU frame when GLIM already publishes its odometry TF.
 To publish them without RViz, run:
 
 ```bash

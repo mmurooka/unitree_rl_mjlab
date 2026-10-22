@@ -37,6 +37,7 @@
 #ifdef UNITREE_MJLAB_HAS_ROS2
 #include "d435_simulator.h"
 #include "frame_pose_publisher.h"
+#include "mid360_model.h"
 #include "mid360_simulator.h"
 #endif
 
@@ -115,6 +116,10 @@ namespace
   {
 #ifdef UNITREE_MJLAB_HAS_ROS2
     std::lock_guard<std::mutex> lock(ros_sensor_mutex);
+    if (m && param::config.enable_mid360 && !param::config.glim_config_path.empty()) {
+      ConfigureMid360Model(m, param::config.glim_config_path);
+      mj_forward(m, d);
+    }
     d435.reset();
     mid360.reset();
     frame_pose_publisher.reset();
@@ -749,6 +754,10 @@ int main(int argc, char **argv)
   std::filesystem::path proj_dir = std::filesystem::path(getExecutableDir()).parent_path();
   param::config.load_from_yaml(proj_dir / "config.yaml");
   param::helper(argc, argv);
+#ifndef UNITREE_MJLAB_HAS_ROS2
+  if (param::config.glim_mode)
+    throw std::runtime_error("--glim-config requires a simulator built with ROS 2 sensor support");
+#endif
   if(param::config.robot_scene.is_relative()) {
     param::config.robot_scene = proj_dir.parent_path() / param::config.robot_scene;
   }

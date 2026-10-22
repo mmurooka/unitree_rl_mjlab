@@ -28,6 +28,8 @@ inline struct SimulationConfig
     int band_attached_link = 0;
 
     bool glim_mode = false;
+    std::string glim_config_path;
+    std::string mid360_imu_frame_id = "livox_frame";
     bool enable_mid360 = false;
     std::filesystem::path mid360_scan_pattern;
     std::string mid360_frame_id = "livox_frame";
@@ -52,11 +54,11 @@ inline struct SimulationConfig
     std::string d435_topic_root = "/camera/camera";
 
     bool enable_frame_pose_list = false;
-    std::string frame_pose_source = "ground_truth";
+    std::string frame_pose_source = "aruco";
     std::string frame_pose_topic = "/frame_pose_list";
-    std::string frame_pose_ground_truth_topic = "/frame_pose_list_ground_truth";
+    std::string frame_pose_ground_truth_topic = "/evaluation/frame_pose_list";
     std::string frame_pose_reference_site = "imu";
-    std::string frame_pose_reference_frame = "imu_yaw";
+    std::string frame_pose_reference_frame = "root_yaw";
     double frame_pose_publish_frequency = 20.0;
 
     void load_from_yaml(const std::string &filename)
@@ -131,7 +133,9 @@ inline po::variables_map helper(int argc, char** argv)
     po::options_description desc("Unitree Mujoco");
     desc.add_options()
         ("help,h", "Show help message")
-        ("glim", "Use MID-360/GLIM localization and the real-robot sensor TF tree")
+        ("glim", "Deprecated alias; use --glim-config to match external GLIM sensors")
+        ("glim-config", po::value<std::string>(&config.glim_config_path), "external GLIM config_path (read only); same as on real robot")
+        ("domain-id", po::value<int>(&config.domain_id), "Unitree DDS domain ID")
         ("disable-lidar", "Disable MID-360 lidar and IMU simulation")
         ("disable-camera", "Disable D435 camera simulation")
         ("domain_id,i", po::value<int>(&config.domain_id), "DDS domain ID; -i 0")
@@ -157,6 +161,9 @@ inline po::variables_map helper(int argc, char** argv)
         config.glim_mode = true;
     }
 
+    if (!config.glim_config_path.empty()) config.glim_mode = true;
+    if (config.glim_mode && config.glim_config_path.empty())
+        throw std::invalid_argument("--glim requires --glim-config with the external GLIM configuration");
     if (config.glim_mode && !config.enable_mid360)
     {
         throw std::invalid_argument("--glim requires the MID-360 simulation");

@@ -150,6 +150,9 @@
             <!-- Stock G1 MID-360 mount followed by the raw Livox x/z reversal. -->
             <site name="livox_frame" size="0.01" pos="0.0002835 0.00003 0.40618"
                   quat="-0.0200699388 0 0.9997985785 0" rgba="0 1 0 1"/>
+            <!-- Separate IMU origin; --glim-config applies the shared T_lidar_imu. -->
+            <site name="livox_imu" size="0.005" pos="0.0002835 0.00003 0.40618"
+                  quat="-0.0200699388 0 0.9997985785 0" rgba="0 0.5 0 1"/>
             <body name="camera_link" pos="0.0576235 0.01753 0.41987" euler="0 0.830776724 0">
               <!-- MuJoCo looks along -Z; align it with ROS optical +Z (camera_link +X). -->
               <camera name="camera_depth_optical_frame" pos="0 0 0" quat="0.5 0.5 -0.5 -0.5" fovy="60.39"/>
@@ -377,8 +380,8 @@
     <accelerometer name="imu_acc" site="imu" />
     <framepos name="frame_pos" objtype="site" objname="imu" />
     <framelinvel name="frame_vel" objtype="site" objname="imu" />
-    <gyro name="livox_gyro" site="livox_frame" />
-    <accelerometer name="livox_acc" site="livox_frame" />
+    <gyro name="livox_gyro" site="livox_imu" />
+    <accelerometer name="livox_acc" site="livox_imu" />
   </sensor>
 
   <!-- setup scene -->
