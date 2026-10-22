@@ -10,7 +10,7 @@ default_joint_pos: [-0.1,0,0,0.3,-0.2,0,-0.1,0,0,0.3,-0.2,0,0,0,0,
 commands:
   navigation:
     # auto | glim | simulator
-    localization_source: auto
+    localization_source: glim
     odometry_topic: /glim_ros/odom
     # Stock G1 Livox raw +x points opposite the robot's forward direction.
     odometry_heading_offset: 3.141592653589793

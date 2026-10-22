@@ -1,0 +1,37 @@
+{
+  "sensors": {
+    "imu_acc_noise": 0.05,
+    "imu_gyro_noise": 0.02,
+    "imu_int_noise": 0.001,
+    "imu_bias_noise": 1e-5,
+    "imu_bias_noise_acc": 1e-5,
+    "imu_bias_noise_gyro": 1e-6,
+    "T_lidar_imu": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
+    "global_shutter_lidar": false,
+    "intensity_field": "intensity",
+    "ring_field": "",
+    "autoconf_perpoint_times": false,
+    "autoconf_prefer_frame_time": true,
+    "perpoint_relative_time": true,
+    "perpoint_time_scale": 1.0,
+    "global_shutter_camera": true,
+    "image_size": [640, 480],
+    "T_lidar_camera": [
+      -0.0672953229,
+      0.0175,
+      -0.0053181361,
+      0.2688868378,
+      -0.2688868378,
+      -0.6539876669,
+      0.6539876669
+    ],
+    "intrinsics": [
+      465.60288917518244,
+      466.18866331667175,
+      319.5,
+      239.5
+    ],
+    "distortion_model": "plumb_bob",
+    "distortion_coeffs": [0.0, 0.0, 0.0, 0.0, 0.0]
+  }
+}

@@ -169,6 +169,9 @@ State_Navigation::State_Navigation(int state_mode, std::string state_string)
     localization_source = nav_cfg["localization_source"].as<std::string>(
         localization_source
     );
+    if (!param::navigation_localization_source.empty()) {
+        localization_source = param::navigation_localization_source;
+    }
     odometry_topic = nav_cfg["odometry_topic"].as<std::string>(odometry_topic);
     odometry_heading_offset = nav_cfg["odometry_heading_offset"].as<float>(
         odometry_heading_offset

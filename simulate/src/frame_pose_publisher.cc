@@ -69,6 +69,7 @@ public:
         reference_site_id_(mj_name2id(
             model, mjOBJ_SITE, param::config.frame_pose_reference_site.c_str())),
         camera_body_id_(mj_name2id(model, mjOBJ_BODY, "camera_link")),
+        publish_camera_tf_(!param::config.glim_mode),
         publish_on_primary_topic_(
             param::config.frame_pose_source == "ground_truth"),
         output_topic_(
@@ -123,8 +124,11 @@ public:
       owns_ros_context_ = true;
     }
     node_ = std::make_shared<rclcpp::Node>("unitree_mujoco_frame_pose_list");
-    camera_tf_broadcaster_ =
-        std::make_unique<tf2_ros::TransformBroadcaster>(node_);
+    if (publish_camera_tf_)
+    {
+      camera_tf_broadcaster_ =
+          std::make_unique<tf2_ros::TransformBroadcaster>(node_);
+    }
     publisher_ = node_->create_publisher<std_msgs::msg::String>(
         output_topic_, rclcpp::QoS(1));
 
@@ -140,11 +144,15 @@ public:
       std::cout << "; publishing simulation truth for marker search on "
                 << output_topic_;
     }
-    if (camera_body_id_ >= 0)
+    if (camera_body_id_ >= 0 && publish_camera_tf_)
     {
       std::cout << "; broadcasting "
                 << param::config.frame_pose_reference_frame
                 << " -> camera_link";
+    }
+    else if (camera_body_id_ >= 0 && param::config.glim_mode)
+    {
+      std::cout << "; camera TF is owned by the GLIM sensor tree";
     }
     std::cout << " at " << param::config.frame_pose_publish_frequency << " Hz"
               << std::endl;
@@ -208,7 +216,7 @@ public:
         0.0, 0.0, 1.0,
     };
 
-    if (camera_body_id_ >= 0)
+    if (camera_body_id_ >= 0 && publish_camera_tf_)
     {
       const mjtNum *camera_world_position = data->xpos + 3 * camera_body_id_;
       const mjtNum camera_world_delta[3] = {
@@ -302,6 +310,7 @@ private:
   double period_;
   int reference_site_id_;
   int camera_body_id_;
+  bool publish_camera_tf_;
   bool publish_on_primary_topic_;
   std::string output_topic_;
   double last_sim_time_ = -1.0;

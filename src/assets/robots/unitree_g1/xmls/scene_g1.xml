@@ -147,8 +147,10 @@
             <geom pos="0.0039635 0 -0.044" type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.2 0.2 0.2 1" mesh="head_link"/>
             <geom pos="0.0039635 0 -0.044" type="mesh" rgba="0.2 0.2 0.2 1" mesh="head_link"/>
             <site name="imu_in_torso" size="0.01" pos="-0.03959 -0.00224 0.14792"/>
-            <site name="livox_frame" size="0.01" pos="0 0 0.405" quat="0 0 1 0" rgba="0 1 0 1"/>
-            <body name="camera_link" pos="0.0576235 0.01753 0.42987" euler="0 0.8307767 0">
+            <!-- Stock G1 MID-360 mount followed by the raw Livox x/z reversal. -->
+            <site name="livox_frame" size="0.01" pos="0.0002835 0.00003 0.40618"
+                  quat="-0.0200699388 0 0.9997985785 0" rgba="0 1 0 1"/>
+            <body name="camera_link" pos="0.0576235 0.01753 0.41987" euler="0 0.830776724 0">
               <!-- MuJoCo looks along -Z; align it with ROS optical +Z (camera_link +X). -->
               <camera name="camera_depth_optical_frame" pos="0 0 0" quat="0.5 0.5 -0.5 -0.5" fovy="60.39"/>
               <camera name="camera_color_optical_frame" pos="0.015 0 0" quat="0.5 0.5 -0.5 -0.5" fovy="54.48"/>

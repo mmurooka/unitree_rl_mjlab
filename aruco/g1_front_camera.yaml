@@ -6,7 +6,7 @@ camera_name: g1_front_camera
 camera_matrix:
   rows: 3
   cols: 3
-  data: [1350.0, 0.0, 964.4358, 0.0, 1350.0, 538.3260, 0.0, 0.0, 1.0]
+  data: [1154.7042, 0.0, 964.4358, 0.0, 865.0281, 538.3260, 0.0, 0.0, 1.0]
 distortion_model: plumb_bob
 distortion_coefficients:
   rows: 1
@@ -19,7 +19,7 @@ rectification_matrix:
 projection_matrix:
   rows: 3
   cols: 4
-  data: [1350.0, 0.0, 964.4358, 0.0, 0.0, 1350.0, 538.3260, 0.0, 0.0, 0.0, 1.0, 0.0]
+  data: [1154.7042, 0.0, 964.4358, 0.0, 0.0, 865.0281, 538.3260, 0.0, 0.0, 0.0, 1.0, 0.0]
 
 # Stock G1 livox_frame -> D435 color optical frame. Derived from Unitree's
 # g1_dual_arm.urdf D435/MID-360 mounts, the Livox raw x/z axis reversal, the

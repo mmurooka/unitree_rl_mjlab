@@ -4,6 +4,7 @@
 #include <boost/program_options.hpp>
 #include <yaml-cpp/yaml.h>
 #include <filesystem>
+#include <stdexcept>
 
 namespace param
 {
@@ -26,6 +27,7 @@ inline struct SimulationConfig
     int enable_elastic_band;
     int band_attached_link = 0;
 
+    bool glim_mode = false;
     bool enable_mid360 = false;
     std::filesystem::path mid360_scan_pattern;
     std::string mid360_frame_id = "livox_frame";
@@ -34,6 +36,7 @@ inline struct SimulationConfig
     double mid360_point_rate = 200000.0;
     double mid360_publish_frequency = 10.0;
     double mid360_imu_frequency = 200.0;
+    double mid360_startup_delay = 0.0;
     double mid360_min_range = 0.1;
     double mid360_max_range = 40.0;
     int mid360_downsample = 1;
@@ -82,6 +85,7 @@ inline struct SimulationConfig
                 mid360_point_rate = lidar["point_rate"].as<double>(mid360_point_rate);
                 mid360_publish_frequency = lidar["publish_frequency"].as<double>(mid360_publish_frequency);
                 mid360_imu_frequency = lidar["imu_frequency"].as<double>(mid360_imu_frequency);
+                mid360_startup_delay = lidar["startup_delay"].as<double>(mid360_startup_delay);
                 mid360_min_range = lidar["min_range"].as<double>(mid360_min_range);
                 mid360_max_range = lidar["max_range"].as<double>(mid360_max_range);
                 mid360_downsample = lidar["downsample"].as<int>(mid360_downsample);
@@ -127,6 +131,7 @@ inline po::variables_map helper(int argc, char** argv)
     po::options_description desc("Unitree Mujoco");
     desc.add_options()
         ("help,h", "Show help message")
+        ("glim", "Use MID-360/GLIM localization and the real-robot sensor TF tree")
         ("disable-lidar", "Disable MID-360 lidar and IMU simulation")
         ("disable-camera", "Disable D435 camera simulation")
         ("domain_id,i", po::value<int>(&config.domain_id), "DDS domain ID; -i 0")
@@ -146,6 +151,15 @@ inline po::variables_map helper(int argc, char** argv)
     if (vm.count("disable-camera"))
     {
         config.enable_d435 = false;
+    }
+    if (vm.count("glim"))
+    {
+        config.glim_mode = true;
+    }
+
+    if (config.glim_mode && !config.enable_mid360)
+    {
+        throw std::invalid_argument("--glim requires the MID-360 simulation");
     }
 
     if (vm.count("help"))

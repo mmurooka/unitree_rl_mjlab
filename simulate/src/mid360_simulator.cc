@@ -28,6 +28,7 @@ namespace
 {
 constexpr double kPi = 3.14159265358979323846;
 constexpr std::size_t kMaxQueuedClouds = 2;
+constexpr std::size_t kMaxQueuedImus = 4000;
 
 struct RayDirection
 {
@@ -112,13 +113,18 @@ public:
         lidar_site_id_(mj_name2id(model, mjOBJ_SITE, param::config.mid360_frame_id.c_str())),
         lidar_body_id_(lidar_site_id_ >= 0 ? model->site_bodyid[lidar_site_id_] : -1),
         gyro_sensor_id_(mj_name2id(model, mjOBJ_SENSOR, "livox_gyro")),
-        acc_sensor_id_(mj_name2id(model, mjOBJ_SENSOR, "livox_acc"))
+        acc_sensor_id_(mj_name2id(model, mjOBJ_SENSOR, "livox_acc")),
+        startup_delay_(
+            param::config.glim_mode ? param::config.mid360_startup_delay : 0.0)
   {
     if (lidar_site_id_ < 0)
     {
       throw std::runtime_error("MID-360 site not found in model: " + param::config.mid360_frame_id);
     }
-    if (param::config.mid360_point_rate <= 0.0 || param::config.mid360_publish_frequency <= 0.0 ||
+    if (param::config.mid360_point_rate <= 0.0 ||
+        param::config.mid360_publish_frequency <= 0.0 ||
+        param::config.mid360_imu_frequency <= 0.0 ||
+        startup_delay_ < 0.0 ||
         param::config.mid360_downsample < 1)
     {
       throw std::runtime_error("invalid MID-360 rate or downsample configuration");
@@ -145,7 +151,8 @@ public:
 
     std::cout << "MID-360: loaded " << rays_.size() << " official scan directions, publishing "
               << param::config.mid360_lidar_topic << " at "
-              << param::config.mid360_publish_frequency << " Hz" << std::endl;
+              << param::config.mid360_publish_frequency << " Hz after "
+              << startup_delay_ << " s warmup" << std::endl;
   }
 
   ~Impl()
@@ -168,6 +175,11 @@ public:
 
   void Advance(const mjModel *model, mjData *data)
   {
+    if (data->time < startup_delay_)
+    {
+      last_sim_time_ = data->time;
+      return;
+    }
     if (data->time < last_sim_time_)
     {
       ray_budget_ = 0.0;
@@ -199,6 +211,14 @@ public:
     if (data->time >= next_cloud_time_)
     {
       const double next_cloud_start = next_cloud_time_;
+      const double last_regular_imu_time = next_imu_time_ - imu_period_;
+      if (last_regular_imu_time + 1.0e-12 < data->time)
+      {
+        // GLIM deskews through the last point in the scan. Real MID-360
+        // packets provide an IMU sample covering that endpoint, so add one
+        // when the physics step and the configured IMU period are not aligned.
+        QueueImu(model, data, data->time);
+      }
       QueueCloud(std::move(active_cloud_));
       active_cloud_ = Cloud{};
       active_cloud_.points.reserve(static_cast<std::size_t>(points_per_second_ * cloud_period_ * 1.1));
@@ -288,8 +308,11 @@ private:
     message.linear_acceleration.y = acc[1];
     message.linear_acceleration.z = acc[2];
     std::lock_guard<std::mutex> lock(queue_mutex_);
-    latest_imu_ = std::move(message);
-    has_imu_ = true;
+    if (imu_queue_.size() == kMaxQueuedImus)
+    {
+      imu_queue_.pop_front();
+    }
+    imu_queue_.push_back(std::move(message));
     queue_cv_.notify_one();
   }
 
@@ -336,13 +359,12 @@ private:
     while (true)
     {
       Cloud cloud;
-      sensor_msgs::msg::Imu imu;
+      std::deque<sensor_msgs::msg::Imu> imus;
       bool has_cloud = false;
-      bool has_imu = false;
       {
         std::unique_lock<std::mutex> lock(queue_mutex_);
         queue_cv_.wait_for(lock, std::chrono::milliseconds(10), [this] {
-          return stop_ || !cloud_queue_.empty() || has_imu_;
+          return stop_ || !cloud_queue_.empty() || !imu_queue_.empty();
         });
         if (stop_)
         {
@@ -354,14 +376,9 @@ private:
           cloud_queue_.pop_front();
           has_cloud = true;
         }
-        if (has_imu_)
-        {
-          imu = latest_imu_;
-          has_imu_ = false;
-          has_imu = true;
-        }
+        imus.swap(imu_queue_);
       }
-      if (has_imu)
+      for (const auto &imu : imus)
       {
         imu_publisher_->publish(imu);
       }
@@ -378,6 +395,7 @@ private:
   int lidar_body_id_ = -1;
   int gyro_sensor_id_ = -1;
   int acc_sensor_id_ = -1;
+  double startup_delay_ = 0.0;
   double points_per_second_ = 0.0;
   double cloud_period_ = 0.1;
   double imu_period_ = 0.005;
@@ -395,8 +413,7 @@ private:
   std::mutex queue_mutex_;
   std::condition_variable queue_cv_;
   std::deque<Cloud> cloud_queue_;
-  sensor_msgs::msg::Imu latest_imu_;
-  bool has_imu_ = false;
+  std::deque<sensor_msgs::msg::Imu> imu_queue_;
   bool stop_ = false;
 };
 

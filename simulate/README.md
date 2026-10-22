@@ -25,6 +25,56 @@ disable both sensor simulations:
 ./build/unitree_mujoco --disable-lidar --disable-camera
 ```
 
+## Real-robot-style GLIM mode
+
+Use the repository launcher when Navigation behavior must be tested through
+the same localization path as the physical G1:
+
+```bash
+source /opt/ros/jazzy/setup.bash
+.venv-ar/bin/python scripts/run_glim_simulation.py
+```
+
+Run that command from the repository root. It starts:
+
+1. GLIM with a complete copy of the installed configuration plus the
+   simulation-specific ROS and sensor overrides in
+   `SLAM/GLIM_config_sim`.
+2. `unitree_mujoco --glim`, including the MID-360 and D435.
+3. `aruco/frame_pose_publisher.py --glim`.
+
+The resulting Navigation path is
+`/livox/lidar` + `/livox/imu` -> GLIM -> `/glim_ros/odom` -> the G1
+controller. Unlike ordinary sim2sim, MuJoCo ground-truth localization is not
+used when the controller is launched with:
+
+```bash
+python scripts/run_online_deploy.py \
+  --navigation-localization-source glim
+```
+
+Alternatively, pass `--with-deploy` to the GLIM simulation launcher when the
+current Python environment contains all deploy dependencies. The controller
+waits with zero Navigation commands until GLIM odometry becomes available.
+
+`--glim` also changes the simulated TF ownership to match the real robot:
+GLIM publishes `odom -> livox_frame`, while the D435 simulator publishes the
+static `livox_frame -> camera_link` mount. The old MuJoCo truth
+`imu_yaw -> camera_link` transform is suppressed, avoiding a camera frame
+with two parents.
+
+MuJoCo accelerometer values are already in m/s², so this mode uses
+`acc_scale: 1.0`; the physical Livox configuration that scales values
+reported in g must not be reused. The sensor mount in the G1 MJCF uses the
+stock Unitree MID-360 and D435 extrinsics. MID-360 output starts after the
+`startup_delay` in `config.yaml`, keeping the uncontrolled startup transient
+out of GLIM's gravity and bias initialization. The table scene includes room
+walls and a ceiling because a floor-only point cloud cannot constrain planar
+LiDAR translation.
+
+Useful options are `--no-aruco`, `--scene PATH`, `--domain-id N`, and
+`--network INTERFACE`.
+
 ## Table and box scene
 
 Select `src/assets/robots/unitree_g1/xmls/scene_g1_table_box.xml` in

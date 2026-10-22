@@ -242,17 +242,32 @@ topics, and timeouts are configured in the selected Navigation policy's
 The current trajectory actor has 120 inputs, including the 14-joint arm target
 and future path observations.
 
-For sim2sim, the default `localization_source: auto` falls back to the MuJoCo
+For ordinary sim2sim, `localization_source: auto` falls back to the MuJoCo
 truth position published on `rt/sportmodestate`; yaw comes from the simulated
 IMU in `rt/lowstate`. GLIM is preferred when both inputs are available. The
 selected source is fixed until Navigation is exited, preventing a coordinate
 frame change while walking. Set `localization_source` explicitly to `glim` or
 `simulator` when automatic selection is not desired.
 
-Build from a shell where the ROS 2 environment is sourced. The odometry pose's
-child frame must have its +x axis aligned with the G1 base forward direction;
-if GLIM tracks a sensor frame with a different mounting transform, publish a
-base-aligned odometry pose before using it here. Test suspended and in
+To reproduce the physical localization path with the simulated MID-360, start:
+
+```bash
+source /opt/ros/jazzy/setup.bash
+.venv-ar/bin/python scripts/run_glim_simulation.py
+python scripts/run_online_deploy.py \
+  --navigation-localization-source glim
+```
+
+The first command starts MuJoCo, GLIM, and the ArUco detector. The second
+forces Navigation to consume `/glim_ros/odom` and disables truth fallback for
+that process. See `simulate/README.md` for the combined `--with-deploy` mode
+and configuration details.
+
+Build from a shell where the ROS 2 environment is sourced. The stock G1
+`livox_frame` points opposite the robot's planar forward direction, so the
+Navigation policy configuration applies `odometry_heading_offset: pi`. Use
+the same correction in `frame_pose_publisher.py --glim`; change both values
+together for a different sensor frame. Test suspended and in
 `unitree_mujoco` before running on the physical robot.
 
 ### 3.3 Simulation Deployment

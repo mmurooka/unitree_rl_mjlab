@@ -17,6 +17,11 @@ def main():
         "--controller", default=str(root / "deploy/robots/g1/build/g1_ctrl")
     )
     parser.add_argument("--network", default="lo")
+    parser.add_argument(
+        "--navigation-localization-source",
+        choices=("auto", "glim", "simulator"),
+        help="override the selected Navigation policy localization source",
+    )
     parser.add_argument("--endpoint", default="ipc:///tmp/task_prompt_rl_motion.sock")
     parser.add_argument(
         "--deploy-endpoint", default="ipc:///tmp/task_prompt_rl_deploy.sock"
@@ -36,7 +41,15 @@ def main():
     ]
     if args.no_save_debug:
         worker.append("--no-save-debug")
-    return run_processes([worker, [args.controller, "--network", args.network]], root)
+    controller = [args.controller, "--network", args.network]
+    if args.navigation_localization_source is not None:
+        controller.extend(
+            [
+                "--navigation-localization-source",
+                args.navigation_localization_source,
+            ]
+        )
+    return run_processes([worker, controller], root)
 
 
 def run_processes(commands, cwd):

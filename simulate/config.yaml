@@ -33,6 +33,9 @@ mid360:
   point_rate: 200000
   publish_frequency: 10
   imu_frequency: 200
+  # Used only by --glim: let the initially uncontrolled articulated robot
+  # settle before GLIM estimates gravity, velocity, and IMU bias.
+  startup_delay: 3.0
   min_range: 0.1
   max_range: 40.0
   downsample: 2
