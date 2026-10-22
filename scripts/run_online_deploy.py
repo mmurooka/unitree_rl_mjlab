@@ -2,6 +2,7 @@
 """Launch the motion conversion worker and G1 controller together."""
 
 import argparse
+import os
 import signal
 import subprocess
 import sys
@@ -69,44 +70,47 @@ def main():
 
 
 def run_processes(commands, cwd):
-    # The controller disables terminal echo for keyboard input. SIGTERM/SIGINT
-    # can bypass its destructor, so the launcher must restore the original mode.
+    # Every child owns a process group. Terminate the group even when its leader
+    # exited first, so workers/grandchildren cannot outlive the launcher.
     terminal_fd = sys.stdin.fileno() if sys.stdin.isatty() else None
-    terminal_settings = (
-        termios.tcgetattr(terminal_fd) if terminal_fd is not None else None
-    )
+    terminal_settings = termios.tcgetattr(terminal_fd) if terminal_fd is not None else None
     processes = []
+
+    class Shutdown(Exception):
+        def __init__(self, signum): self.signum = signum
+
+    def stop(signum, _frame):
+        raise Shutdown(signum)
+
+    previous = {sig: signal.signal(sig, stop) for sig in (signal.SIGINT, signal.SIGTERM)}
     try:
         for command in commands:
-            processes.append(subprocess.Popen(command, cwd=cwd))
+            processes.append(subprocess.Popen(command, cwd=cwd, start_new_session=True))
         while all(process.poll() is None for process in processes):
             time.sleep(0.2)
-        return next(
-            process.returncode
-            for process in processes
-            if process.returncode is not None
-        )
-    except KeyboardInterrupt:
-        return 130
+        return next(process.returncode for process in processes if process.returncode is not None)
+    except Shutdown as error:
+        return 128 + error.signum
     finally:
-        # Repeated Ctrl+C must not interrupt child cleanup or terminal restoration.
-        previous_sigint = signal.signal(signal.SIGINT, signal.SIG_IGN)
+        for sig in previous: signal.signal(sig, signal.SIG_IGN)
         try:
             for process in processes:
-                if process.poll() is None:
-                    process.terminate()
+                try: os.killpg(process.pid, signal.SIGTERM)
+                except ProcessLookupError: pass
+            deadline = time.monotonic() + 5
             for process in processes:
-                try:
-                    process.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                    process.wait()
+                try: process.wait(timeout=max(0, deadline-time.monotonic()))
+                except subprocess.TimeoutExpired: pass
+            for process in processes:
+                try: os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError: pass
+                process.wait()
         finally:
             try:
                 if terminal_settings is not None:
                     termios.tcsetattr(terminal_fd, termios.TCSANOW, terminal_settings)
             finally:
-                signal.signal(signal.SIGINT, previous_sigint)
+                for sig, handler in previous.items(): signal.signal(sig, handler)
 
 
 if __name__ == "__main__":

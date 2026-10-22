@@ -58,13 +58,13 @@ raise SystemExit(run_processes([[sys.executable, '-c', {child!r}]], {directory!r
                     time.sleep(0.01)
                 if mode != "exit":
                     self.assertFalse(termios.tcgetattr(slave)[3] & termios.ECHO)
-                    process.send_signal(signal.SIGINT)
+                    process.send_signal(signal.SIGTERM if mode == "terminate" else signal.SIGINT)
                     if mode == "kill":
                         time.sleep(0.2)
                         process.send_signal(signal.SIGINT)
                 _, stderr = process.communicate(timeout=10)
                 self.assertEqual(
-                    process.returncode, 7 if mode == "exit" else 130, stderr.decode()
+                    process.returncode, 7 if mode == "exit" else (143 if mode == "terminate" else 130), stderr.decode()
                 )
                 self.assertEqual(termios.tcgetattr(slave), before)
                 with self.assertRaises(ProcessLookupError):
@@ -79,11 +79,39 @@ raise SystemExit(run_processes([[sys.executable, '-c', {child!r}]], {directory!r
     def test_child_exit_restores_terminal(self):
         self.check_terminal("exit")
 
+    def test_sigterm_restores_terminal(self):
+        self.check_terminal("terminate")
+
     def test_ctrl_c_restores_terminal(self):
         self.check_terminal("interrupt")
 
     def test_forced_kill_and_repeated_ctrl_c_restore_terminal(self):
         self.check_terminal("kill")
+
+    def test_sigterm_kills_grandchild_after_parent_exits(self):
+        with tempfile.TemporaryDirectory() as directory:
+            ready = Path(directory) / "grandchild"
+            child = "import subprocess,sys,time; subprocess.Popen([sys.executable,'-c'," + repr(
+                "import os,signal,time; from pathlib import Path; "
+                "signal.signal(signal.SIGTERM,signal.SIG_IGN); "
+                f"Path({str(ready)!r}).write_text(str(os.getpid())); time.sleep(60)"
+            ) + "]); time.sleep(60)"
+            script = f"import sys; sys.path.insert(0,{str(SCRIPTS)!r}); from run_online_deploy import run_processes; raise SystemExit(run_processes([[sys.executable,'-c',{child!r}]],{directory!r}))"
+            launcher = subprocess.Popen([sys.executable, '-c', script])
+            try:
+                deadline = time.monotonic()+5
+                while not ready.exists():
+                    self.assertIsNone(launcher.poll())
+                    self.assertLess(time.monotonic(),deadline)
+                    time.sleep(.01)
+                launcher.terminate()
+                self.assertEqual(launcher.wait(timeout=8),143)
+                status=Path('/proc')/ready.read_text()/'stat'
+                if status.exists():
+                    self.assertIn(status.read_text().split()[2], ('Z','X'))
+            finally:
+                if launcher.poll() is None:
+                    launcher.kill(); launcher.wait()
 
     def test_without_terminal(self):
         launcher = f"""
