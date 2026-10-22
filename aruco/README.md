@@ -1,131 +1,65 @@
-# ArUco frame pose publisher
+# ArUco object poses (same recognition in sim and real)
 
-`frame_pose_publisher.py` detects the marker IDs configured under
-`frame_pose_list.aruco.markers` in `simulate/config.yaml`, converts each marker
-pose to its associated object pose, and publishes the existing
-`std_msgs/msg/String` JSON contract on `/frame_pose_list`.
+`frame_pose_publisher.py` publishes `/frame_pose_list` from camera images,
+CameraInfo, measured SDK motor angles and the pelvis IMU quaternion. Its
+`root_yaw` frame has the pelvis origin, horizontal robot-forward +X, left +Y,
+and up +Z. Waist motion and body tilt are included through model FK.
+Recognition does not use GLIM, ROS TF, or simulated world poses.
 
-## Simulation
+Use Python 3.10 with ROS Humble (or Python matching your installed ROS), NumPy,
+PyYAML, OpenCV with ArUco, and `unitree_sdk2_python`. A ROS-compatible environment
+can be made with `python3 -m venv --system-site-packages .venv-sensors` after
+sourcing ROS. Install the official Unitree SDK2 Python package in that environment
+as for `scripts/camera_opencv.py`; DDS may require `CYCLONEDDS_HOME=/usr/local`.
+Do not use an unrelated Python version with the ROS binary modules.
 
-Set the source in `simulate/config.yaml`:
-
-```yaml
-frame_pose_list:
-  source: "aruco"
-```
-
-Start the simulator, then run:
-
-```bash
-source .venv-ar/bin/activate
-python aruco/frame_pose_publisher.py
-```
-
-With `frame_pose_list.aruco.display: true`, this also opens the robot camera
-view annotated with detected marker borders, IDs, frame names and pose axes.
-Press `q` while that window is focused to close the view without stopping pose
-publication. Set `display: false` for a headless run.
-
-Set `source: "ground_truth"` to return to the MuJoCo body-pose publisher. In
-ArUco mode, the simulator publishes truth separately on
-`/frame_pose_list_ground_truth`; `send_navigation_goal.py` uses it only to turn
-toward a requested marker that is initially outside the camera view. The final
-approach always uses the marker pose from `/frame_pose_list`. The simulator
-also broadcasts the moving `imu_yaw -> camera_link` transform needed by the
-ArUco node.
-
-Marker search backs up 0.15 m while turning by default. On a real robot, run
-the following from the TaskPromptRL repository and pass a fixed search
-direction relative to the robot's current heading. This prevents access to any
-simulation-truth topic:
+After starting the simulator:
 
 ```bash
-python scripts/send_navigation_goal.py \
-  --frame-name carry_box \
-  --search-yaw 1.57 \
-  --search-backoff 0.15
+source /opt/ros/humble/setup.bash
+python aruco/frame_pose_publisher.py --environment sim --network lo
 ```
 
-When `--search-yaw` is omitted, simulation search continues to obtain the
-direction from `/frame_pose_list_ground_truth`.
-
-The simulated scene uses ID 0 on the robot-facing side of `carry_box`, ID 1 on
-top of `pickup_table`, and ID 2 on top of `place_table`. Regenerate their PNGs
-after changing the dictionary or IDs with:
+For a robot, start the camera bridge separately, then the same recognition node:
 
 ```bash
-python3 aruco/generate_markers.py
+python scripts/camera_opencv.py <robot-interface> --no-display --no-publish-static-tf
+python aruco/frame_pose_publisher.py --environment real --network <robot-interface>
 ```
 
-## Real robot
+`--domain-id` selects Unitree DDS (default 0); it is separate from ROS_DOMAIN_ID.
+`--glim` is accepted for compatibility but no longer selects a recognition path.
+The camera topics and marker map are in `simulate/config.yaml`; the same map is
+used for both environments. Toggle `frame_pose_list.aruco.display` for preview.
+Press `q` to close only the preview. Regenerate marker textures using
+`python aruco/generate_markers.py` when marker IDs change.
 
-`scripts/camera_opencv.py` bridges the JPEG stream returned by Unitree SDK2 to
-the same ROS 2 interface used in simulation:
+Fixed waist/sensor geometry is `config/g1_sensor_frames.yaml`, exported from the
+MJCF; see [sensor frames](../doc/sensor_frames.md). The model optical frame is
+used for both `camera_color_optical_frame` and `g1_front_camera_optical_frame`.
+A different physical camera requires its calibrated model transform. CameraInfo
+must match the image frame and dimensions. Actual calibration accuracy is still
+to be validated on hardware; a syntactically valid K does not establish accuracy.
 
-- `/camera/camera/color/image_raw` (`sensor_msgs/msg/Image`, `bgr8`)
-- `/camera/camera/color/camera_info` (`sensor_msgs/msg/CameraInfo`)
+State is interpolated at the image timestamp, rather than using the latest TF.
+In sim, SDK tick and camera stamp both use simulation seconds. In real, SDK state
+is timestamped on receipt in ROS time; the camera bridge also timestamps received
+images. This is a documented approximation to capture time, not proof of hardware
+synchronization. Stale state, mismatched timestamps and gaps suppress poses.
 
-In one terminal, source ROS 2 and an environment containing
-`unitree_sdk2py`, then pass the Ethernet interface connected to the robot:
+JSON includes `stamp`, `reference_frame: root_yaw`, `source: aruco`,
+`clock_domain` (`simulation` or `ros`), and `frame_pose_list` entries with
+`frame_name` and `rel_pose: [x,y,z,qx,qy,qz,qw]`. The reference is the robot at
+that stamp, not the robot at a later goal start time.
 
-```bash
-source /opt/ros/jazzy/setup.bash
-source .venv-ar/bin/activate
-python scripts/camera_opencv.py <robot-network-interface>
-```
+The simulator's `/evaluation/frame_pose_list` is evaluation-only object truth.
+It must never be consumed for navigation goals or target search, even in the
+GLIM-free localization mode. The simulator no longer publishes a world-derived
+camera TF. Setting `frame_pose_list.source: ground_truth` is rejected.
 
-The OpenCV preview remains enabled by default; press `Esc` or `q` to stop the
-node. Add `--no-display` when running headless. The topic names already match
-`simulate/config.yaml`, so start pose detection in another ROS-sourced
-terminal with:
+`object_to_marker` specifies marker pose in the object frame; its inverse turns
+the observed marker pose into an object pose. Marker size is the black square's
+outer edge (12 cm in the supplied configuration), excluding the quiet zone.
 
-```bash
-python aruco/frame_pose_publisher.py --glim
-```
-
-The camera bridge loads `aruco/g1_front_camera.yaml` by default and scales its
-intrinsics if the SDK returns a resolution other than 1920x1080. Those initial
-values come from the existing G1 ArUco setup; replace that file with calibration
-from the particular robot for accurate metric poses. A different standard ROS
-camera-calibration YAML can be selected with `--calibration`.
-
-The same YAML also contains the stock G1
-`livox_frame -> g1_front_camera_optical_frame` camera extrinsic. It is derived
-from Unitree's G1 D435 and MID-360 mounts, the raw Livox sensor axes, and the ROS
-camera optical-frame convention. The bridge publishes it on `/tf_static`,
-connecting the camera to GLIM's observed `odom -> livox_frame` transform. If
-another node already publishes a calibrated camera transform, start the bridge
-with `--no-publish-static-tf` instead.
-
-`--glim` makes the ArUco node consume that connected TF tree. It removes the
-current GLIM base yaw and origin while preserving roll/pitch and the camera
-mounting transform. Stock G1 Livox data uses a raw sensor frame whose +x axis
-is opposite the robot's forward direction, so the default also applies a pi-rad
-heading offset. This produces marker poses with +x robot-forward, matching the
-Navigation controller's corrected GLIM heading. It labels the JSON reference
-as `glim_base_yaw` and records the correction in
-`reference_yaw_offset_rad`. Override non-stock frames with
-`--glim-world-frame`, `--glim-base-frame`, and `--glim-heading-offset`.
-
-Use the same marker YAML mapping with `source: "aruco"`. Without `--glim`, the
-simulation behavior remains unchanged and uses the configured `reference_frame`.
-
-If the camera driver has no TF, set `use_tf: false` and enter the calibrated
-camera pose as `static_reference_to_camera` in ROS pose order
-`[x,y,z,qx,qy,qz,qw]`. A fixed transform is suitable only when the camera is
-rigid relative to the chosen reference frame.
-
-Before running the complete deploy sequence, verify the bridge independently:
-
-```bash
-ros2 topic hz /camera/camera/color/image_raw
-ros2 topic echo /camera/camera/color/camera_info --once
-ros2 run tf2_ros tf2_echo odom g1_front_camera_optical_frame
-```
-
-`object_to_marker` is the marker coordinate frame's pose in the object's frame.
-It accounts for a marker being mounted on a side or top surface, so downstream
-code still receives the object's center pose rather than the marker pose.
-`marker_size` is the black marker's outer-edge length, excluding its white quiet
-zone. For the supplied images, print the 12 cm marker on a 15 cm white square
-and mount it with the orientation described by `object_to_marker`.
+Tests: `python -m unittest discover -s aruco -p test_frame_pose_publisher.py`
+and `python -m unittest discover -s tests -p test_robot_frames.py`.

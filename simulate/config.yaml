@@ -52,40 +52,28 @@ d435:
   pointcloud_downsample: 2
   topic_root: "/camera/camera"
 
-# Named MuJoCo body poses relative to the robot. Each /frame_pose_list entry
-# contains frame_name and rel_pose=[x,y,z,qx,qy,qz,qw].
+# Object truth is published only for evaluation. Never use it for recognition,
+# goal generation, or marker search (including in GLIM-free mode).
 frame_pose_list:
   enabled: true
-  # "ground_truth" publishes MuJoCo body poses on `topic`. "aruco" lets
-  # aruco/frame_pose_publisher.py own `topic` and keeps truth on the separate
-  # search-only topic below.
   source: "aruco"
   topic: "/frame_pose_list"
-  # In ArUco mode, simulation truth remains available only for rotating toward
-  # an initially invisible target. It is never used for the final approach.
-  ground_truth_topic: "/frame_pose_list_ground_truth"
-  # Positions are expressed in a gravity-aligned frame at this site, using
-  # only the robot yaw so they match the Navigation goal convention.
+  ground_truth_topic: "/evaluation/frame_pose_list"
   reference_site: "imu"
-  reference_frame: "imu_yaw"
+  reference_frame: "root_yaw"
   publish_frequency: 20
 
   aruco:
     image_topic: "/camera/camera/color/image_raw"
     camera_info_topic: "/camera/camera/color/camera_info"
-    # Leave camera_frame empty to use the Image header. The simulator publishes
-    # imu_yaw -> camera_link dynamically and the optical transforms statically.
+    # Use the color optical frame in Image/CameraInfo. Model FK supplies the
+    # camera pose from measured waist angles and body IMU, in both sim and real.
     camera_frame: ""
     dictionary: "DICT_4X4_50"
-    tf_timeout: 0.1
     # Show the robot camera with detected marker borders, IDs and pose axes.
     # Press q while the window is focused to close only the display.
     display: true
     display_window: "Robot camera / ArUco"
-    # If TF is unavailable on the real robot, set use_tf to false and fill in
-    # the calibrated [x,y,z,qx,qy,qz,qw] pose of the camera in reference_frame.
-    use_tf: true
-    static_reference_to_camera: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
     markers:
       0:
         frame_name: "carry_box"

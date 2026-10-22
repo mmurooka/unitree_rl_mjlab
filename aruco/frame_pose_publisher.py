@@ -6,7 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from pathlib import Path
 import sys
 import time
@@ -17,13 +17,15 @@ import numpy as np
 import yaml
 
 import rclpy
-from rclpy.duration import Duration
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
-from rclpy.time import Time
 from sensor_msgs.msg import CameraInfo, Image
 from std_msgs.msg import String
-from tf2_ros import Buffer, TransformException, TransformListener
+
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+from robot_frames import SensorKinematics, DEFAULT_MODEL
+from measured_robot_state import MeasuredRobotState
 
 
 DEFAULT_CONFIG = Path(__file__).resolve().parents[1] / "simulate" / "config.yaml"
@@ -208,15 +210,8 @@ class PublisherConfig:
     reference_frame: str
     dictionary_id: int
     dictionary_name: str
-    tf_timeout: float
-    use_tf: bool
-    tf_yaw_reference: bool
-    tf_yaw_offset: float
-    tf_world_frame: str
-    tf_base_frame: str
     display: bool
     display_window: str
-    static_reference_to_camera: np.ndarray
     markers: dict[int, Marker]
 
 
@@ -263,16 +258,7 @@ def load_config(path: Path, require_aruco_source: bool = True) -> PublisherConfi
     if not markers:
         raise ValueError("at least one ArUco marker mapping is required")
 
-    static_pose = _as_vector(
-        aruco_config.get("static_reference_to_camera", [0, 0, 0, 0, 0, 0, 1]),
-        7,
-        "static_reference_to_camera",
-    )
-    reference_frame = str(
-        aruco_config.get(
-            "reference_frame", frame_config.get("reference_frame", "imu_yaw")
-        )
-    ).strip()
+    reference_frame = "root_yaw"
     values = {
         "topic": str(frame_config.get("topic", "/frame_pose_list")).strip(),
         "image_topic": str(aruco_config.get("image_topic", "")).strip(),
@@ -285,69 +271,14 @@ def load_config(path: Path, require_aruco_source: bool = True) -> PublisherConfi
     for name, value in values.items():
         if not value:
             raise ValueError(f"{name} must not be empty")
-    tf_timeout = float(aruco_config.get("tf_timeout", 0.1))
-    if not math.isfinite(tf_timeout) or tf_timeout < 0.0:
-        raise ValueError("tf_timeout must be a finite non-negative number")
-
     return PublisherConfig(
         **values,
         camera_frame=str(aruco_config.get("camera_frame", "")).strip(),
         dictionary_id=int(dictionary_id),
         dictionary_name=dictionary_name,
-        tf_timeout=tf_timeout,
-        use_tf=bool(aruco_config.get("use_tf", True)),
-        tf_yaw_reference=False,
-        tf_yaw_offset=0.0,
-        tf_world_frame="",
-        tf_base_frame="",
         display=bool(aruco_config.get("display", False)),
-        static_reference_to_camera=pose_matrix(static_pose),
         markers=markers,
     )
-
-
-def transform_message_matrix(transform: Any) -> np.ndarray:
-    translation = transform.translation
-    rotation = transform.rotation
-    return pose_matrix(
-        [
-            translation.x,
-            translation.y,
-            translation.z,
-            rotation.x,
-            rotation.y,
-            rotation.z,
-            rotation.w,
-        ]
-    )
-
-
-def yaw_aligned_reference_to_camera(
-    world_to_base: np.ndarray,
-    world_to_camera: np.ndarray,
-    yaw_offset: float = 0.0,
-) -> np.ndarray:
-    """Express the camera in a corrected, current-base yaw reference frame."""
-    world_to_base = np.asarray(world_to_base, dtype=np.float64)
-    world_to_camera = np.asarray(world_to_camera, dtype=np.float64)
-    if world_to_base.shape != (4, 4) or world_to_camera.shape != (4, 4):
-        raise ValueError("TF matrices must be 4x4")
-    if not np.all(np.isfinite(world_to_base)) or not np.all(
-        np.isfinite(world_to_camera)
-    ):
-        raise ValueError("TF matrices must contain only finite values")
-    if not math.isfinite(yaw_offset):
-        raise ValueError("yaw_offset must be finite")
-
-    yaw = math.atan2(world_to_base[1, 0], world_to_base[0, 0]) + yaw_offset
-    cosine = math.cos(yaw)
-    sine = math.sin(yaw)
-    world_to_reference = np.eye(4, dtype=np.float64)
-    world_to_reference[:3, :3] = np.array(
-        [[cosine, -sine, 0.0], [sine, cosine, 0.0], [0.0, 0.0, 1.0]]
-    )
-    world_to_reference[:3, 3] = world_to_base[:3, 3]
-    return np.linalg.inv(world_to_reference) @ world_to_camera
 
 
 def image_arrays(message: Image) -> tuple[np.ndarray, np.ndarray]:
@@ -385,9 +316,17 @@ def image_arrays(message: Image) -> tuple[np.ndarray, np.ndarray]:
 
 
 class ArucoFramePosePublisher(Node):
-    def __init__(self, config: PublisherConfig) -> None:
+    def __init__(self, config: PublisherConfig, environment: str,
+                 network: str | None = None, domain_id: int = 0,
+                 model: Path = DEFAULT_MODEL) -> None:
         super().__init__("aruco_frame_pose_list")
         self.config = config
+        self.environment = environment
+        self.kinematics = SensorKinematics(model)
+        self.measured = MeasuredRobotState(
+            environment, lambda: self.get_clock().now().nanoseconds * 1e-9, network, domain_id)
+        self.info_shape = None
+        self.info_frame = None
         self.dictionary = cv2.aruco.getPredefinedDictionary(config.dictionary_id)
         self.marker_detector = CompatibleArucoDetector(self.dictionary)
         self.camera_matrix: np.ndarray | None = None
@@ -406,25 +345,11 @@ class ArucoFramePosePublisher(Node):
         self.image_subscription = self.create_subscription(
             Image, config.image_topic, self.on_image, qos_profile_sensor_data
         )
-        self.tf_buffer: Buffer | None = None
-        self.tf_listener: TransformListener | None = None
-        if config.use_tf:
-            self.tf_buffer = Buffer()
-            self.tf_listener = TransformListener(self.tf_buffer, self)
-
         marker_summary = ", ".join(
             f"{marker_id}:{marker.frame_name}"
             for marker_id, marker in sorted(config.markers.items())
         )
-        if config.tf_yaw_reference:
-            transform_source = (
-                f"GLIM TF {config.tf_world_frame} <- {config.tf_base_frame} "
-                f"<- camera (yaw-aligned, offset={config.tf_yaw_offset:.6f} rad)"
-            )
-        else:
-            transform_source = (
-                "TF" if config.use_tf else "static_reference_to_camera"
-            )
+        transform_source = "model FK + measured joints/body IMU (no TF/GLIM)"
         self.get_logger().info(
             f"publishing {config.topic} from {config.image_topic}; "
             f"dictionary={config.dictionary_name}, markers=[{marker_summary}], "
@@ -451,6 +376,7 @@ class ArucoFramePosePublisher(Node):
             self.warn_throttled("display", f"camera display disabled: {error}")
 
     def destroy_node(self) -> None:
+        self.measured.close()
         if self.display_initialized:
             cv2.destroyWindow(self.config.display_window)
             self.display_initialized = False
@@ -467,60 +393,27 @@ class ArucoFramePosePublisher(Node):
         if not np.all(np.isfinite(matrix)) or matrix[0, 0] <= 0.0 or matrix[1, 1] <= 0.0:
             self.warn_throttled("camera_info", "ignoring invalid CameraInfo intrinsics")
             return
+        distortion = np.asarray(message.d, dtype=np.float64)
+        if message.distortion_model not in ("plumb_bob", "rational_polynomial") or not np.isfinite(distortion).all():
+            self.warn_throttled("camera_info", "unsupported/invalid CameraInfo distortion")
+            return
         self.camera_matrix = matrix
-        self.distortion = np.asarray(message.d, dtype=np.float64)
+        self.distortion = distortion
+        self.info_shape = (int(message.width), int(message.height))
+        self.info_frame = message.header.frame_id
 
-    def reference_to_camera(self, camera_frame: str) -> np.ndarray | None:
-        if not self.config.use_tf:
-            return self.config.static_reference_to_camera
-        assert self.tf_buffer is not None
-        try:
-            if self.config.tf_yaw_reference:
-                world_to_base_message = self.tf_buffer.lookup_transform(
-                    self.config.tf_world_frame,
-                    self.config.tf_base_frame,
-                    Time(),
-                    timeout=Duration(seconds=self.config.tf_timeout),
-                )
-                base_to_camera_message = self.tf_buffer.lookup_transform(
-                    self.config.tf_base_frame,
-                    camera_frame,
-                    Time(),
-                    timeout=Duration(seconds=self.config.tf_timeout),
-                )
-                world_to_base = transform_message_matrix(
-                    world_to_base_message.transform
-                )
-                base_to_camera = transform_message_matrix(
-                    base_to_camera_message.transform
-                )
-                return yaw_aligned_reference_to_camera(
-                    world_to_base,
-                    world_to_base @ base_to_camera,
-                    self.config.tf_yaw_offset,
-                )
-            transform = self.tf_buffer.lookup_transform(
-                self.config.reference_frame,
-                camera_frame,
-                Time(),
-                timeout=Duration(seconds=self.config.tf_timeout),
-            )
-        except TransformException as error:
-            if self.config.tf_yaw_reference:
-                required_transform = (
-                    f"{self.config.tf_world_frame} <- {self.config.tf_base_frame} "
-                    f"<- {camera_frame}"
-                )
-            else:
-                required_transform = (
-                    f"{self.config.reference_frame} <- {camera_frame}"
-                )
-            self.warn_throttled(
-                "tf",
-                f"waiting for transform {required_transform}: {error}",
-            )
+    def reference_to_camera(self, camera_frame: str, stamp: float) -> np.ndarray | None:
+        # Both stream names refer to the model's color optical mount. A new
+        # physical camera needs an explicit model/calibration, not a guessed TF.
+        if camera_frame not in ("camera_color_optical_frame", "g1_front_camera_optical_frame"):
+            self.warn_throttled("camera_frame", f"unsupported optical frame: {camera_frame}")
             return None
-        return transform_message_matrix(transform.transform)
+        try:
+            state = self.measured.at(stamp)
+            return self.kinematics.horizontal_to_camera(state.q, state.quaternion)
+        except ValueError as error:
+            self.warn_throttled("measured_state", str(error))
+            return None
 
     def on_image(self, message: Image) -> None:
         try:
@@ -542,7 +435,12 @@ class ArucoFramePosePublisher(Node):
             self.warn_throttled("camera_frame", "Image header has no camera frame")
             self.show_camera(display)
             return
-        reference_to_camera = self.reference_to_camera(camera_frame)
+        if self.info_shape != (int(message.width), int(message.height)) or self.info_frame != message.header.frame_id:
+            self.warn_throttled("camera_info_match", "Image and CameraInfo resolution/frame disagree")
+            self.show_camera(display)
+            return
+        stamp = float(message.header.stamp.sec) + float(message.header.stamp.nanosec) * 1e-9
+        reference_to_camera = self.reference_to_camera(camera_frame, stamp)
         if reference_to_camera is None:
             self.show_camera(display)
             return
@@ -602,7 +500,9 @@ class ArucoFramePosePublisher(Node):
             {
                 "stamp": stamp,
                 "reference_frame": self.config.reference_frame,
-                "reference_yaw_offset_rad": self.config.tf_yaw_offset,
+                "source": "aruco",
+                "clock_domain": "simulation" if self.environment == "sim" else "ros",
+                "state_time_source": "sdk_tick" if self.environment == "sim" else "dds_receipt_ros_time",
                 "frame_pose_list": detected,
             },
             separators=(",", ":"),
@@ -621,38 +521,13 @@ def parse_args(arguments: list[str] | None = None) -> argparse.Namespace:
         default=DEFAULT_CONFIG,
         help=f"configuration YAML (default: {DEFAULT_CONFIG})",
     )
-    parser.add_argument(
-        "--glim",
-        action="store_true",
-        help=(
-            "use GLIM TF to express poses in a current, yaw-aligned robot "
-            "frame suitable for Navigation"
-        ),
-    )
-    parser.add_argument(
-        "--glim-world-frame",
-        default="odom",
-        help="GLIM fixed frame used with --glim (default: odom)",
-    )
-    parser.add_argument(
-        "--glim-base-frame",
-        default="livox_frame",
-        help="GLIM moving base frame used with --glim (default: livox_frame)",
-    )
-    parser.add_argument(
-        "--glim-heading-offset",
-        type=float,
-        default=math.pi,
-        help=(
-            "yaw added to the GLIM base heading so +x is robot-forward "
-            "(default: pi for the stock G1 livox_frame)"
-        ),
-    )
-    parser.add_argument(
-        "--glim-reference-frame",
-        default="glim_base_yaw",
-        help="reference_frame label in published JSON when using --glim",
-    )
+    parser.add_argument("--environment", choices=("sim", "real"), default="real",
+                        help="state timestamp domain; sim uses SDK tick, real uses ROS receipt time")
+    parser.add_argument("--network", default=None, help="Unitree DDS interface (e.g. lo in sim)")
+    parser.add_argument("--domain-id", type=int, default=0)
+    parser.add_argument("--sensor-model", type=Path, default=DEFAULT_MODEL)
+    parser.add_argument("--glim", action="store_true",
+                        help="deprecated compatibility flag; recognition no longer uses GLIM")
     return parser.parse_args(arguments)
 
 
@@ -665,36 +540,10 @@ def main(arguments: list[str] | None = None) -> int:
         return 2
 
     if args.glim:
-        glim_values = {
-            "glim_world_frame": args.glim_world_frame.strip(),
-            "glim_base_frame": args.glim_base_frame.strip(),
-            "glim_reference_frame": args.glim_reference_frame.strip(),
-        }
-        empty_names = [name for name, value in glim_values.items() if not value]
-        if empty_names:
-            print(
-                f"configuration error: {', '.join(empty_names)} must not be empty",
-                file=sys.stderr,
-            )
-            return 2
-        if not math.isfinite(args.glim_heading_offset):
-            print(
-                "configuration error: glim_heading_offset must be finite",
-                file=sys.stderr,
-            )
-            return 2
-        config = replace(
-            config,
-            reference_frame=glim_values["glim_reference_frame"],
-            use_tf=True,
-            tf_yaw_reference=True,
-            tf_yaw_offset=args.glim_heading_offset,
-            tf_world_frame=glim_values["glim_world_frame"],
-            tf_base_frame=glim_values["glim_base_frame"],
-        )
+        print("--glim is no longer needed: recognition uses measured joints and body IMU.", file=sys.stderr)
 
     rclpy.init(args=None)
-    node = ArucoFramePosePublisher(config)
+    node = ArucoFramePosePublisher(config, args.environment, args.network, args.domain_id, args.sensor_model)
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:

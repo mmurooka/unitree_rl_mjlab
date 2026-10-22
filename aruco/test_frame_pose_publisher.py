@@ -15,7 +15,6 @@ from frame_pose_publisher import (
     matrix_pose,
     parse_args,
     pose_matrix,
-    yaw_aligned_reference_to_camera,
 )
 
 
@@ -43,59 +42,10 @@ class PoseMathTest(unittest.TestCase):
         expected[3:] /= np.linalg.norm(expected[3:])
         np.testing.assert_allclose(actual, expected, atol=1.0e-12)
 
-    def test_glim_reference_keeps_base_origin_and_removes_only_yaw(self):
-        yaw = np.pi / 2.0
-        roll = np.pi / 6.0
-        yaw_rotation = np.array(
-            [
-                [np.cos(yaw), -np.sin(yaw), 0.0],
-                [np.sin(yaw), np.cos(yaw), 0.0],
-                [0.0, 0.0, 1.0],
-            ]
-        )
-        roll_rotation = np.array(
-            [
-                [1.0, 0.0, 0.0],
-                [0.0, np.cos(roll), -np.sin(roll)],
-                [0.0, np.sin(roll), np.cos(roll)],
-            ]
-        )
-        world_to_base = np.eye(4)
-        world_to_base[:3, :3] = yaw_rotation @ roll_rotation
-        world_to_base[:3, 3] = [4.0, -2.0, 0.5]
-        base_to_camera = np.eye(4)
-        base_to_camera[:3, 3] = [0.2, -0.1, 0.3]
-
-        actual = yaw_aligned_reference_to_camera(
-            world_to_base, world_to_base @ base_to_camera
-        )
-
-        np.testing.assert_allclose(
-            actual[:3, :3], roll_rotation, atol=1.0e-12
-        )
-        np.testing.assert_allclose(
-            actual[:3, 3], roll_rotation @ base_to_camera[:3, 3], atol=1.0e-12
-        )
-
-    def test_stock_g1_glim_offset_makes_robot_forward_positive(self):
-        world_to_livox = np.eye(4)
-        world_to_camera = np.eye(4)
-
-        actual = yaw_aligned_reference_to_camera(
-            world_to_livox,
-            world_to_camera,
-            np.pi,
-        )
-        point_in_front_of_robot_in_livox = np.array([-1.0, 0.0, 0.0, 1.0])
-
-        np.testing.assert_allclose(
-            actual @ point_in_front_of_robot_in_livox,
-            [1.0, 0.0, 0.0, 1.0],
-            atol=1.0e-12,
-        )
-
-    def test_glim_heading_offset_defaults_to_stock_g1_axis_correction(self):
-        self.assertAlmostEqual(parse_args([]).glim_heading_offset, np.pi)
+    def test_recognition_no_longer_selects_a_glim_frame(self):
+        args = parse_args(["--environment", "sim", "--network", "lo", "--glim"])
+        self.assertEqual(args.environment, "sim")
+        self.assertFalse(hasattr(args, "glim_heading_offset"))
 
     def test_object_to_marker_is_inverted(self):
         config = {
@@ -123,7 +73,10 @@ class PoseMathTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "config.yaml"
             path.write_text(yaml.safe_dump(config), encoding="utf-8")
-            marker = load_config(path).markers[7]
+            loaded = load_config(path)
+            self.assertEqual(loaded.reference_frame, "root_yaw")
+            self.assertFalse(hasattr(loaded, "use_tf"))
+            marker = loaded.markers[7]
         np.testing.assert_allclose(marker.marker_to_object[:3, 3], [-0.2, 0.0, 0.0])
 
     def test_marker_pose_uses_legacy_coordinate_convention(self):

@@ -21,3 +21,5 @@ src/assets/motions/g1/ref2.npz
 GPATH
 GRTAGS
 GTAGS
+
+.venv-sensors/
