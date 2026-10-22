@@ -21,6 +21,8 @@
 
 #include "FSM/FSMState.h"
 #include "NavigationGoalService.h"
+#include "SensorFrames.h"
+#include "glim_config.h"
 #include "isaaclab/envs/manager_based_rl_env.h"
 
 class State_Navigation : public FSMState
@@ -50,6 +52,10 @@ private:
         Eigen::Vector3f position{Eigen::Vector3f::Zero()};
         Eigen::Quaternionf orientation{Eigen::Quaternionf::Identity()};
         float heading{0.0f};
+        double stamp{0.0};
+        double age{0.0};
+        Eigen::Vector3f raw_position{Eigen::Vector3f::Zero()};
+        Eigen::Quaternionf raw_orientation{Eigen::Quaternionf::Identity()};
     };
 
     struct TrajectoryPose
@@ -59,6 +65,7 @@ private:
     };
 
 #ifdef G1_NAVIGATION_WITH_ROS2
+    void sample_measured_state();
     void odometry_callback(const nav_msgs::msg::Odometry::ConstSharedPtr msg);
 #endif
     bool read_latest_glim_odometry(
@@ -115,12 +122,22 @@ private:
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odometry_subscription;
     std::unique_ptr<rclcpp::executors::SingleThreadedExecutor> ros_executor;
     std::thread ros_thread;
+    rclcpp::TimerBase::SharedPtr measured_state_timer;
+    sensor_frames::History measured_history;
+    std::unique_ptr<sensor_frames::Kinematics> sensor_kinematics;
+    g1::GlimConfig glim_config;
+    uint32_t last_measured_tick{0};
+    bool measured_tick_seen{false};
+    double latest_odometry_stamp{-INFINITY};
+    std::atomic<bool> localization_reset{false};
 
     mutable std::mutex odometry_mutex;
     Eigen::Vector3f latest_odometry_position{Eigen::Vector3f::Zero()};
     Eigen::Quaternionf latest_odometry_orientation{Eigen::Quaternionf::Identity()};
     std::chrono::steady_clock::time_point latest_odometry_received_at{};
     bool has_odometry{false};
+    Eigen::Vector3f raw_odometry_position{Eigen::Vector3f::Zero()};
+    Eigen::Quaternionf raw_odometry_orientation{Eigen::Quaternionf::Identity()};
 #endif
     unitree::robot::go2::subscription::SportModeState::SharedPtr simulator_state;
     std::shared_ptr<NavigationGoalService> navigation_service;
@@ -175,10 +192,9 @@ private:
     std::size_t pose_log_flush_interval{5};
     bool pose_log_enabled{true};
 
-    std::string localization_source{"auto"};
+    std::string localization_source;
     std::string active_localization_source;
     std::string odometry_topic{"/glim_ros/odom"};
-    float odometry_heading_offset{0.0f};
     std::string simulator_state_topic{"rt/sportmodestate"};
     float odometry_timeout{0.5f};
     TrajectoryPose requested_goal;

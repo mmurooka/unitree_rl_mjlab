@@ -19,9 +19,14 @@ def main():
     parser.add_argument("--network", default="lo")
     parser.add_argument(
         "--navigation-localization-source",
-        choices=("auto", "glim", "simulator"),
+        choices=("glim", "simulator"),
+        required=True,
         help="override the selected Navigation policy localization source",
     )
+    parser.add_argument("--environment", choices=("sim", "real"), default="real")
+    parser.add_argument("--domain-id", type=int, default=0)
+    parser.add_argument("--glim-config", type=Path)
+    parser.add_argument("--sensor-model", type=Path)
     parser.add_argument("--endpoint", default="ipc:///tmp/task_prompt_rl_motion.sock")
     parser.add_argument(
         "--deploy-endpoint", default="ipc:///tmp/task_prompt_rl_deploy.sock"
@@ -29,6 +34,12 @@ def main():
     parser.add_argument("--debug-dir", default="/tmp/task_prompt_rl/received")
     parser.add_argument("--no-save-debug", action="store_true")
     args = parser.parse_args()
+    if args.environment == "real" and args.navigation_localization_source == "simulator":
+        parser.error("simulator ground truth cannot be used on real hardware")
+    if args.navigation_localization_source == "glim" and args.glim_config is None:
+        parser.error("--glim-config must match the externally started GLIM config_path")
+    if args.domain_id < 0:
+        parser.error("--domain-id must be nonnegative")
     worker = [
         sys.executable,
         str(root / "scripts/serve_motion_prompt.py"),
@@ -41,7 +52,12 @@ def main():
     ]
     if args.no_save_debug:
         worker.append("--no-save-debug")
-    controller = [args.controller, "--network", args.network]
+    controller = [args.controller, "--network", args.network,
+                  "--environment", args.environment, "--domain-id", str(args.domain_id)]
+    if args.glim_config is not None:
+        controller.extend(["--glim-config", str(args.glim_config.resolve())])
+    if args.sensor_model is not None:
+        controller.extend(["--sensor-model", str(args.sensor_model.resolve())])
     if args.navigation_localization_source is not None:
         controller.extend(
             [

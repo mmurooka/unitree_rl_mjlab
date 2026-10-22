@@ -28,6 +28,7 @@ include_directories(
   /usr/local/include/ddscxx
   /usr/local/include/iceoryx/v2.0.2
   include
+  ${PROJECT_SOURCE_DIR}/../../../common
   ${ONNXRUNTIME_DIR}/include
   ${PROJECT_SOURCE_DIR}/../../include/
   ${PROJECT_SOURCE_DIR}/../../thirdparty/cnpy

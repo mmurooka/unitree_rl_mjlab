@@ -34,7 +34,7 @@ void init_fsm_state()
     spdlog::info("Connected to robot.");
 }
 
-int main(int argc, char** argv)
+int run_controller(int argc, char** argv)
 {
 #ifdef G1_NAVIGATION_WITH_ROS2
     // Keep ROS-specific arguments away from the controller's Boost parser.
@@ -65,8 +65,14 @@ int main(int argc, char** argv)
     std::cout << " --- Unitree Robotics --- \n";
     std::cout << "     G1-29dof Controller \n";
 
+    // Validate read-only localization resources before creating any robot channels.
+    if (param::navigation_localization_source == "glim") {
+        (void)g1::load_glim_config(param::glim_config_path);
+        (void)sensor_frames::Kinematics(param::sensor_model_path);
+    }
+
     // Unitree DDS Config
-    unitree::robot::ChannelFactory::Instance()->Init(0, vm["network"].as<std::string>());
+    unitree::robot::ChannelFactory::Instance()->Init(param::domain_id, vm["network"].as<std::string>());
 
     init_fsm_state();
 
@@ -106,4 +112,13 @@ int main(int argc, char** argv)
     }
     
     return 0;
+}
+
+int main(int argc, char** argv)
+{
+    try { return run_controller(argc, argv); }
+    catch (const std::exception& e) {
+        std::cerr << "Controller configuration/runtime error: " << e.what() << std::endl;
+        return 2;
+    }
 }

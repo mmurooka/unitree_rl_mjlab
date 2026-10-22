@@ -33,3 +33,29 @@ The tests use MuJoCo world poses only as an independent evaluation oracle, never
 as input to the production transform. They cover random root/waist attitudes,
 map-yaw invariance, inverted mounts, IMU offsets, stale data and clock resets.
 This foundation does not by itself remove the old TF-dependent runtime path.
+
+## Navigation runtime
+
+The controller requires `--navigation-localization-source glim|simulator`.
+`--environment real` is the default; `simulator` is rejected for real hardware.
+For GLIM pass `--glim-config /absolute/path/to/config`, the same directory passed
+to the externally launched `glim_rosnode`. It is read-only. Its `config.json`
+selects the actual sensor/ROS files; nonstandard file names and JSON comments
+are supported. `--sensor-model` optionally selects another exported model.
+`--domain-id` selects Unitree DDS; it does not change ROS_DOMAIN_ID.
+
+The GLIM subscriber checks parent/child names and samples measured waist angles
+in a bounded history at the odometry timestamp. Both message age and receipt age
+must be fresh. Repeated or reordered odometry cannot refresh its lifetime.
+Simulation clock rewind invalidates navigation: restart external GLIM and submit
+a new goal; a running trajectory must not cross clock/map epochs. Ground-truth
+localization subscribes only to `rt/sportmodestate` and still uses the same root
+origin/heading convention. It needs neither GLIM nor a ROS-enabled controller.
+
+In Navigation CSV logs, legacy `slam_pose_*` columns now contain the **converted
+pelvis pose**, in the localization world frame. `raw_odom_*` retains the received
+GLIM IMU pose (or truth root pose for `simulator`). `localization_stamp_s` is the
+sample time and `localization_age_s` its age; `robot_*` is the displacement since
+start in the frozen horizontal root frame. The `source` column distinguishes
+estimated from ground-truth localization. Ground truth never supplies marker
+positions or camera transforms.

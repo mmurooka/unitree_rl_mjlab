@@ -44,6 +44,10 @@ inline std::filesystem::path proj_dir;
 inline std::filesystem::path config_dir;
 inline YAML::Node config;
 inline std::string navigation_localization_source;
+inline std::string environment = "real";
+inline std::string glim_config_path;
+inline std::string sensor_model_path;
+inline int domain_id = 0;
 
 inline std::filesystem::path get_bin_path() {
     std::vector<char> path(1024);
@@ -136,9 +140,13 @@ inline po::variables_map helper(int argc, char** argv)
         ("version,v", "show version")
         ("log", "record log file")
         ("network,n", po::value<std::string>()->default_value(""), "dds network interface")
+        ("environment", po::value<std::string>(&environment)->default_value("real"), "sim or real")
+        ("domain-id", po::value<int>(&domain_id)->default_value(0), "Unitree DDS domain (not ROS_DOMAIN_ID)")
+        ("glim-config", po::value<std::string>(&glim_config_path), "external GLIM config_path directory (read only)")
+        ("sensor-model", po::value<std::string>(&sensor_model_path), "model-derived sensor kinematics YAML")
         ("navigation-localization-source",
          po::value<std::string>(&navigation_localization_source),
-         "override Navigation localization source: auto, glim, or simulator")
+         "required Navigation localization source: glim or simulator")
         ;
 
     po::variables_map vm;
@@ -155,6 +163,20 @@ inline po::variables_map helper(int argc, char** argv)
         std::cout << "Version: " << VERSION << std::endl;
         exit(0);
     }
+
+    if (environment != "sim" && environment != "real")
+        throw std::runtime_error("--environment must be sim or real");
+    if (domain_id < 0) throw std::runtime_error("--domain-id must be nonnegative");
+    if (config["FSM"]["_"]["Navigation"]) {
+        if (navigation_localization_source != "glim" && navigation_localization_source != "simulator")
+            throw std::runtime_error("Specify --navigation-localization-source glim or simulator; auto is removed");
+        if (environment == "real" && navigation_localization_source == "simulator")
+            throw std::runtime_error("Ground-truth localization cannot be used with --environment real");
+        if (navigation_localization_source == "glim" && glim_config_path.empty())
+            throw std::runtime_error("Specify --glim-config with the same config_path directory used by external GLIM");
+    }
+    if (sensor_model_path.empty())
+        sensor_model_path = (proj_dir / "../../../config/g1_sensor_frames.yaml").lexically_normal().string();
 
 #ifndef NDEBUG
     spdlog::set_level(spdlog::level::debug);

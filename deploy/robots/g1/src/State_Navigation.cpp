@@ -173,9 +173,6 @@ State_Navigation::State_Navigation(int state_mode, std::string state_string)
         localization_source = param::navigation_localization_source;
     }
     odometry_topic = nav_cfg["odometry_topic"].as<std::string>(odometry_topic);
-    odometry_heading_offset = nav_cfg["odometry_heading_offset"].as<float>(
-        odometry_heading_offset
-    );
     simulator_state_topic = nav_cfg["simulator_state_topic"].as<std::string>(
         simulator_state_topic
     );
@@ -229,31 +226,16 @@ State_Navigation::State_Navigation(int state_mode, std::string state_string)
     position_tolerance = nav_cfg["position_tolerance"].as<float>(position_tolerance);
     heading_tolerance = nav_cfg["heading_tolerance"].as<float>(heading_tolerance);
 
-    if (localization_source != "auto" &&
-        localization_source != "glim" &&
-        localization_source != "simulator") {
-        throw std::runtime_error(
-            "Navigation localization_source must be auto, glim, or simulator."
-        );
-    }
-#ifdef G1_NAVIGATION_WITH_ROS2
-    const bool use_glim = localization_source != "simulator";
-#else
-    const bool use_glim = false;
-    if (localization_source == "glim") {
-        throw std::runtime_error(
-            "This g1_ctrl was built without ROS 2; use simulator or auto "
-            "localization, or rebuild with G1_NAVIGATION_WITH_ROS2=ON."
-        );
-    }
+    g1::validate_localization(param::environment, localization_source);
+    const bool use_glim = localization_source == "glim";
+    const bool use_simulator = localization_source == "simulator";
+#ifndef G1_NAVIGATION_WITH_ROS2
+    if (use_glim) throw std::runtime_error("GLIM requires a build with G1_NAVIGATION_WITH_ROS2=ON");
 #endif
-    const bool use_simulator = localization_source != "glim";
     if ((use_glim && odometry_topic.empty()) ||
         (use_simulator && simulator_state_topic.empty()) ||
-        odometry_timeout <= 0.0f ||
-        !std::isfinite(odometry_heading_offset)) {
-        throw std::runtime_error("Invalid Navigation localization configuration.");
-    }
+        !std::isfinite(odometry_timeout) || odometry_timeout <= 0.0f)
+        throw std::runtime_error("Invalid Navigation localization configuration");
     if (pose_log_enabled &&
         (pose_log_path.empty() || target_path_log_path.empty() ||
          pose_log_flush_interval == 0)) {
@@ -432,7 +414,13 @@ State_Navigation::State_Navigation(int state_mode, std::string state_string)
 
 #ifdef G1_NAVIGATION_WITH_ROS2
     if (use_glim) {
+        glim_config = g1::load_glim_config(param::glim_config_path);
+        sensor_kinematics = std::make_unique<sensor_frames::Kinematics>(param::sensor_model_path);
         ros_node = std::make_shared<rclcpp::Node>("g1_navigation_localization");
+        measured_state_timer = ros_node->create_wall_timer(
+            std::chrono::milliseconds(5), [this] { sample_measured_state(); });
+        spdlog::info("External GLIM config: {}; odometry {} -> {}, converted to pelvis using measured waist",
+            param::glim_config_path, glim_config.odom_frame, glim_config.imu_frame);
         odometry_subscription = ros_node->create_subscription<nav_msgs::msg::Odometry>(
             odometry_topic,
             rclcpp::SensorDataQoS(),
@@ -443,25 +431,13 @@ State_Navigation::State_Navigation(int state_mode, std::string state_string)
         ros_thread = std::thread([this] { ros_executor->spin(); });
     }
 #endif
-    simulator_state = std::make_shared<
-        unitree::robot::go2::subscription::SportModeState
-    >(simulator_state_topic);
-    simulator_state->set_timeout_ms(std::max<uint32_t>(
-        1U,
-        static_cast<uint32_t>(odometry_timeout * 1000.0f)
-    ));
-    spdlog::info(
-        "Navigation localization source: {} (GLIM: {}, simulator: {}, "
-        "heading offset: {:.6f} rad, timeout: {:.2f} s); external goal "
-        "endpoint: {}.",
-        localization_source,
-        odometry_topic,
-        simulator_state_topic,
-        odometry_heading_offset,
-        odometry_timeout,
-        state_cfg["endpoint"].as<std::string>(
-            "ipc:///tmp/task_prompt_rl_navigation.sock")
-    );
+    if (use_simulator) {
+        simulator_state = std::make_shared<unitree::robot::go2::subscription::SportModeState>(simulator_state_topic);
+        simulator_state->set_timeout_ms(std::max<uint32_t>(1U, static_cast<uint32_t>(odometry_timeout * 1000.0f)));
+    }
+    spdlog::info("Navigation: environment={}, localization={}, goal frame=root_yaw, timeout={} s",
+        param::environment, localization_source, odometry_timeout);
+
 }
 
 State_Navigation::~State_Navigation()
@@ -812,9 +788,52 @@ State_Navigation* State_Navigation::instance()
 }
 
 #ifdef G1_NAVIGATION_WITH_ROS2
+void State_Navigation::sample_measured_state()
+{
+    if (FSMState::lowstate->isTimeout()) return;
+    sensor_frames::State sample;
+    uint32_t tick;
+    {
+        std::lock_guard<std::mutex> lock(FSMState::lowstate->mutex_);
+        const auto& msg = FSMState::lowstate->msg_;
+        tick = msg.tick();
+        if (measured_tick_seen && tick == last_measured_tick) return;
+        sample.stamp = param::environment == "sim" ? tick * .001 : ros_node->now().seconds();
+        for (size_t i=0; i<29; ++i) sample.q[i] = msg.motor_state()[i].q();
+        const auto& q = msg.imu_state().quaternion();
+        sample.orientation = Eigen::Quaterniond(q[0],q[1],q[2],q[3]);
+    }
+    try {
+        if (measured_history.add(sample)) {
+            std::lock_guard<std::mutex> lock(odometry_mutex);
+            has_odometry = false;
+            latest_odometry_stamp = -INFINITY;
+            localization_reset = true;
+            spdlog::warn("Sensor clock reset; restart external GLIM and submit a new Navigation goal");
+        }
+        last_measured_tick = tick;
+        measured_tick_seen = true;
+    } catch (const std::exception& e) {
+        RCLCPP_WARN_THROTTLE(ros_node->get_logger(), *ros_node->get_clock(), 2000, "%s", e.what());
+    }
+}
+
 void State_Navigation::odometry_callback(
     const nav_msgs::msg::Odometry::ConstSharedPtr msg)
 {
+    if (msg->header.frame_id != glim_config.odom_frame || msg->child_frame_id != glim_config.imu_frame) {
+        RCLCPP_WARN_THROTTLE(ros_node->get_logger(), *ros_node->get_clock(), 2000,
+            "Rejecting GLIM odometry with unexpected parent/child frame");
+        return;
+    }
+    sample_measured_state();
+    const double stamp = rclcpp::Time(msg->header.stamp).seconds();
+    sensor_frames::State measured;
+    if (!measured_history.at(stamp, measured)) {
+        RCLCPP_WARN_THROTTLE(ros_node->get_logger(), *ros_node->get_clock(), 2000,
+            "No measured waist state at GLIM timestamp; check clocks and input latency");
+        return;
+    }
     const auto& position = msg->pose.pose.position;
     const auto& orientation = msg->pose.pose.orientation;
     const bool pose_is_finite =
@@ -842,13 +861,18 @@ void State_Navigation::odometry_callback(
     }
     quaternion.normalize();
 
+    sensor_frames::Pose odom_imu = sensor_frames::Pose::Identity();
+    odom_imu.linear() = quaternion.cast<double>().toRotationMatrix();
+    odom_imu.translation() = Eigen::Vector3d(position.x, position.y, position.z);
+    const auto root_imu = sensor_kinematics->root_to_sensor(measured.q) * glim_config.lidar_to_imu;
+    const sensor_frames::Pose odom_root = odom_imu * root_imu.inverse();
     std::lock_guard<std::mutex> lock(odometry_mutex);
-    latest_odometry_position = Eigen::Vector3f(
-        static_cast<float>(position.x),
-        static_cast<float>(position.y),
-        static_cast<float>(position.z)
-    );
-    latest_odometry_orientation = quaternion;
+    if (stamp <= latest_odometry_stamp) return; // repeated/reordered samples cannot refresh freshness
+    raw_odometry_position = odom_imu.translation().cast<float>();
+    raw_odometry_orientation = quaternion;
+    latest_odometry_position = odom_root.translation().cast<float>();
+    latest_odometry_orientation = Eigen::Quaternionf(odom_root.linear().cast<float>());
+    latest_odometry_stamp = stamp;
     latest_odometry_received_at = std::chrono::steady_clock::now();
     has_odometry = true;
 }
@@ -860,21 +884,22 @@ bool State_Navigation::read_latest_glim_odometry(
 {
 #ifdef G1_NAVIGATION_WITH_ROS2
     std::lock_guard<std::mutex> lock(odometry_mutex);
-    if (!has_odometry) {
+    if (!has_odometry || localization_reset || FSMState::lowstate->isTimeout()) {
         return false;
     }
 
+    pose.stamp = latest_odometry_stamp;
+    pose.raw_position = raw_odometry_position;
+    pose.raw_orientation = raw_odometry_orientation;
     pose.position = latest_odometry_position;
     pose.orientation = latest_odometry_orientation;
-    const float raw_heading = quaternion_heading(pose.orientation);
-    pose.heading = std::atan2(
-        std::sin(raw_heading + odometry_heading_offset),
-        std::cos(raw_heading + odometry_heading_offset)
-    );
+    pose.heading = quaternion_heading(pose.orientation);
     age_seconds = std::chrono::duration<float>(
         std::chrono::steady_clock::now() - latest_odometry_received_at
     ).count();
-    return true;
+    age_seconds = std::max(age_seconds, static_cast<float>(measured_history.newest_stamp() - latest_odometry_stamp));
+    pose.age = age_seconds;
+    return std::isfinite(age_seconds) && pose.orientation.coeffs().allFinite();
 #else
     (void)pose;
     (void)age_seconds;
@@ -897,12 +922,18 @@ bool State_Navigation::read_simulator_pose(LocalizationPose& pose)
             simulator_position[2]
         );
     }
+    {
+        std::lock_guard<std::mutex> lock(FSMState::lowstate->mutex_);
+        pose.stamp = FSMState::lowstate->msg_.tick() * .001;
+    }
     pose.orientation = env->robot->data.root_quat_w;
     if (pose.orientation.squaredNorm() < 1.0e-8f) {
         return false;
     }
     pose.orientation.normalize();
     pose.heading = quaternion_heading(pose.orientation);
+    pose.raw_position = pose.position;
+    pose.raw_orientation = pose.orientation;
     return pose.position.allFinite() &&
         pose.orientation.coeffs().allFinite() &&
         std::isfinite(pose.heading);
@@ -942,9 +973,8 @@ bool State_Navigation::read_localization_pose(
         return try_simulator();
     }
 
-    // Auto mode chooses once per Navigation entry. GLIM is preferred when
-    // both sources are present, and the chosen coordinate frame is then held.
-    return try_glim() || try_simulator();
+    return false; // selection was validated at startup; never fall back
+
 }
 
 void State_Navigation::reset_navigation_state()
@@ -954,6 +984,9 @@ void State_Navigation::reset_navigation_state()
     initial_odometry_heading = 0.0f;
     trajectory_initialized = false;
     active_localization_source.clear();
+#ifdef G1_NAVIGATION_WITH_ROS2
+    localization_reset = false;
+#endif
     localization_warning_reported = false;
     goal_warning_reported = false;
     goal_reached = false;
@@ -1613,7 +1646,9 @@ void State_Navigation::open_pose_log()
         << "command_vx_mps,command_vy_mps,command_wz_radps,"
         << "cmd_vx_mps,cmd_vy_mps,cmd_wz_radps,"
         << "projected_gravity_x,projected_gravity_y,projected_gravity_z,"
-        << "goal_reached";
+        << "goal_reached,localization_stamp_s,localization_age_s,"
+        << "raw_odom_x_m,raw_odom_y_m,raw_odom_z_m,"
+        << "raw_odom_qx,raw_odom_qy,raw_odom_qz,raw_odom_qw";
     const std::size_t joint_count = env->robot->data.joint_ids_map.size();
     for (std::size_t i = 0; i < joint_count; ++i) {
         pose_log << ",policy_action_joint_" << std::setw(2) << std::setfill('0') << i;
@@ -1714,7 +1749,12 @@ void State_Navigation::write_pose_log(
         << projected_gravity.x() << ','
         << projected_gravity.y() << ','
         << projected_gravity.z() << ','
-        << (goal_reached ? 1 : 0);
+        << (goal_reached ? 1 : 0) << ','
+        << localization_pose.stamp << ',' << localization_pose.age << ','
+        << localization_pose.raw_position.x() << ',' << localization_pose.raw_position.y() << ','
+        << localization_pose.raw_position.z() << ',' << localization_pose.raw_orientation.x() << ','
+        << localization_pose.raw_orientation.y() << ',' << localization_pose.raw_orientation.z() << ','
+        << localization_pose.raw_orientation.w();
 
     const std::size_t joint_count = env->robot->data.joint_ids_map.size();
     const auto write_joint_values = [&](const auto& values) {
