@@ -23,6 +23,8 @@ private:
     std::shared_ptr<OnlineMotionService> service_;
     std::shared_ptr<NavigationGoalService> navigation_service_;
     std::unique_ptr<isaaclab::ManagerBasedRLEnv> tracking_;
+    std::unique_ptr<isaaclab::ManagerBasedRLEnv> candidate_tracking_;
+    bool prepared_action_{false};
     std::shared_ptr<Loader> playing_;
     size_t tick_ = 0;
     bool holding_ = false;

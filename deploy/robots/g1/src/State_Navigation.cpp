@@ -398,16 +398,8 @@ State_Navigation::State_Navigation(int state_mode, std::string state_string)
         const auto service = online_motion_service;
         // Keep joystick and safety transitions ahead of online motion entry.
         registered_checks.emplace_back([service] {
-            Eigen::VectorXf actual(29);
-            {
-                std::lock_guard<std::mutex> lock(FSMState::lowstate->mutex_);
-                for (int i = 0; i < 29; ++i) {
-                    actual[i] =
-                        FSMState::lowstate->msg_.motor_state()[i].q();
-                }
-            }
             return service->transition_ready(
-                OnlineMotionService::Mode::Navigation, actual
+                OnlineMotionService::Mode::Navigation
             );
         }, FSMStringMap.right.at("OnlineMimic"));
     }

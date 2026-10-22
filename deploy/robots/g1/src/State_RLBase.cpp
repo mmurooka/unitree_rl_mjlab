@@ -67,16 +67,8 @@ State_RLBase::State_RLBase(int state_mode, std::string state_string)
         if (motion_service && FSMStringMap.right.count("OnlineMimic")) {
             // Keep normal joystick and safety transitions ahead of online requests.
             registered_checks.emplace_back([motion_service] {
-                Eigen::VectorXf actual(29);
-                {
-                    std::lock_guard<std::mutex> lock(FSMState::lowstate->mutex_);
-                    for (int i = 0; i < 29; ++i) {
-                        actual[i] =
-                            FSMState::lowstate->msg_.motor_state()[i].q();
-                    }
-                }
                 return motion_service->transition_ready(
-                    OnlineMotionService::Mode::Velocity, actual
+                    OnlineMotionService::Mode::Velocity
                 );
             }, FSMStringMap.right.at("OnlineMimic"));
         }

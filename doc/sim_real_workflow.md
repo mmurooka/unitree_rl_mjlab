@@ -11,6 +11,7 @@ TaskPromptRL command. Source the installed ROS environment in every ROS terminal
 (e.g. `/opt/ros/humble/setup.bash`). Use a ROS-compatible Python environment with
 OpenCV ArUco, NumPy, PyYAML and the official Unitree SDK2 Python for recognition.
 Use the existing motion-conversion Python environment for `run_online_deploy.py`.
+For reusable per-run snapshots and joystick/recording helpers, see [sim checks](sim_check.md).
 
 ## GLIM sim2sim
 

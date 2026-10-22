@@ -162,6 +162,7 @@ public:
     std::vector<Eigen::VectorXf> dof_positions;
     std::vector<Eigen::VectorXf> dof_velocities;
     Eigen::Matrix3f world_to_init_;
+    Eigen::Quaternionf heading_alignment{Eigen::Quaternionf::Identity()};
 };
 
 

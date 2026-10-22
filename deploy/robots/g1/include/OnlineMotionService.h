@@ -28,11 +28,11 @@ public:
     void deactivate();
     std::shared_ptr<Request> claim(Mode mode);
     bool prepare_transition(const std::shared_ptr<Request>& request);
-    bool transition_ready(Mode mode, const Eigen::VectorXf& actual);
+    bool transition_ready(Mode mode);
     bool started(const std::shared_ptr<Request>& request);
     void reject(const std::shared_ptr<Request>& request, const std::string& reason);
     void finished();
-    std::string start_error(const Request& request, const Eigen::VectorXf& actual) const;
+    std::string command_start_error(const std::vector<float>& before, const std::vector<float>& after) const;
 
 private:
     void activate_source(Mode mode);

@@ -3,7 +3,6 @@
 #include "isaaclab/envs/mdp/observations/observations.h"
 #include "isaaclab/envs/mdp/actions/joint_actions.h"
 
-static Eigen::Quaternionf init_quat = Eigen::Quaternionf::Identity();
 std::shared_ptr<State_Mimic::MotionLoader_> State_Mimic::motion = nullptr;
 
 
@@ -41,7 +40,7 @@ void align_mimic_heading(isaaclab::ManagerBasedRLEnv* env)
 {
     auto ref_yaw = isaaclab::yawQuaternion(State_Mimic::motion->root_quaternion()).toRotationMatrix();
     auto robot_yaw = isaaclab::yawQuaternion(robot_quat_w(env)).toRotationMatrix();
-    init_quat = robot_yaw * ref_yaw.transpose();
+    State_Mimic::motion->heading_alignment = robot_yaw * ref_yaw.transpose();
 }
 
 
@@ -75,7 +74,7 @@ REGISTER_OBSERVATION(motion_anchor_ori_b)
     auto real_quat_w = robot_quat_w(env);
     auto ref_quat_w  = motion_anchor_quat_w(loader);
 
-    auto rot_ = (init_quat * ref_quat_w).conjugate() * real_quat_w;
+    auto rot_ = (loader->heading_alignment * ref_quat_w).conjugate() * real_quat_w;
     auto rot = rot_.toRotationMatrix().transpose();
 
     Eigen::Matrix<float, 6, 1> data;
@@ -183,7 +182,7 @@ void State_Mimic::enter()
         motion->reset(env->robot->data, time_range_[0]);
         auto ref_yaw = isaaclab::yawQuaternion(motion->root_quaternion()).toRotationMatrix();
         auto robot_yaw = isaaclab::yawQuaternion(robot_quat_w(env.get())).toRotationMatrix();
-        init_quat = robot_yaw * ref_yaw.transpose();
+        State_Mimic::motion->heading_alignment = robot_yaw * ref_yaw.transpose();
         env->reset();
 
         while (policy_thread_running)

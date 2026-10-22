@@ -24,6 +24,12 @@ State_OnlineMimic::State_OnlineMimic(int state_mode, std::string state_string)
         }
     }
     tracking_->alg = std::make_unique<isaaclab::OrtRunner>(path / "exported" / "policy.onnx");
+    // Reuse a second inference context so rejecting a new motion leaves the
+    // held policy's observation/action history intact.
+    candidate_tracking_ = std::make_unique<isaaclab::ManagerBasedRLEnv>(
+        YAML::LoadFile(path / "params" / "deploy.yaml"),
+        std::make_shared<unitree::BaseArticulation<LowState_t::SharedPtr>>(lowstate));
+    candidate_tracking_->alg = std::make_unique<isaaclab::OrtRunner>(path / "exported" / "policy.onnx");
     registered_checks.emplace_back([this] { return bad_orientation_.load(); },
                                    FSMStringMap.right.at("Passive"));
     registered_checks.emplace_back([this] { return return_to_velocity_.load(); },
@@ -54,23 +60,48 @@ State_OnlineMimic::~State_OnlineMimic()
 
 bool State_OnlineMimic::start_motion(const std::shared_ptr<OnlineMotionService::Request>& request)
 {
-    tracking_->robot->update();
-    const auto error = service_->start_error(*request, tracking_->robot->data.joint_pos);
+    if (lowstate->isTimeout()) {
+        service_->reject(request, "ERROR measured state unavailable for candidate policy inference");
+        return false;
+    }
+    std::vector<float> before;
+    if (running_) {
+        std::lock_guard<std::mutex> lock(action_mutex_);
+        before = target_;
+    } else {
+        // Called on the FSM thread after the source policy has stopped.
+        for (size_t i=0;i<29;++i) before.push_back(lowcmd->msg_.motor_cmd()[i].q());
+    }
+    const auto previous_motion = State_Mimic::motion;
+    try {
+        State_Mimic::motion = request->motion;
+        candidate_tracking_->robot->update();
+        request->motion->reset(candidate_tracking_->robot->data);
+        align_mimic_heading(candidate_tracking_.get());
+        candidate_tracking_->reset();
+        candidate_tracking_->step();
+    } catch (...) {
+        State_Mimic::motion = previous_motion;
+        throw;
+    }
+    State_Mimic::motion = previous_motion;
+    const auto after = candidate_tracking_->action_manager->processed_actions();
+    const auto error = service_->command_start_error(before, after);
     if (!error.empty()) {
         service_->reject(request, error);
         return false;
     }
-    if (navigation_service_) {
-        navigation_service_->set_mimic_busy();
-    }
+    if (!service_->started(request)) return false;
+    float command_change = 0.0f;
+    for (size_t i=0;i<before.size();++i) command_change = std::max(command_change, std::abs(before[i]-after[i]));
+    spdlog::info("OnlineMimic command-to-command start change: {:.2f} deg", command_change*180.0f/3.14159265f);
+    if (navigation_service_) navigation_service_->set_mimic_busy();
+    std::swap(tracking_, candidate_tracking_);
     playing_ = request->motion;
     State_Mimic::motion = playing_;
-    playing_->reset(tracking_->robot->data);
-    align_mimic_heading(tracking_.get());
-    tracking_->reset();
     tick_ = 0;
     holding_ = false;
-    if (!service_->started(request)) return false;
+    prepared_action_ = true;
     spdlog::info("Online motion STARTED: {} frames", playing_->num_frames);
     return true;
 }
@@ -173,7 +204,8 @@ void State_OnlineMimic::control()
             playing_->dof_velocities.back().setZero();
             holding_ = true;
         }
-        tracking_->step();
+        if (prepared_action_) prepared_action_ = false;
+        else tracking_->step();
         bad_orientation_ = isaaclab::mdp::bad_orientation(tracking_.get(), 1.0);
         publish_action();
         if (holding_ && tick_ == static_cast<size_t>(playing_->num_frames)) {

@@ -1,4 +1,5 @@
 #include "OnlineMotionService.h"
+#include "CommandContinuity.h"
 #include <iomanip>
 #include <sstream>
 
@@ -114,18 +115,10 @@ bool OnlineMotionService::prepare_transition(const std::shared_ptr<Request>& req
     return true;
 }
 
-bool OnlineMotionService::transition_ready(
-    Mode mode,
-    const Eigen::VectorXf& actual)
+bool OnlineMotionService::transition_ready(Mode mode)
 {
     auto request = claim(mode);
-    if (!request) return false;
-    const auto error = start_error(*request, actual);
-    if (!error.empty()) {
-        reject(request, error);
-        return false;
-    }
-    return prepare_transition(request);
+    return request && prepare_transition(request);
 }
 
 bool OnlineMotionService::started(const std::shared_ptr<Request>& request)
@@ -152,20 +145,10 @@ void OnlineMotionService::finished()
     if (mode_ == Mode::Mimic && !request_) accepting_ = true;
 }
 
-std::string OnlineMotionService::start_error(const Request& request, const Eigen::VectorXf& actual) const
+std::string OnlineMotionService::command_start_error(
+    const std::vector<float>& before, const std::vector<float>& after) const
 {
-    const auto reference = request.motion->joint_pos();
-    if (actual.size() != reference.size() || !actual.allFinite()) {
-        return "ERROR invalid measured joint positions";
-    }
-    Eigen::Index joint = 0;
-    const float difference = (actual - reference).cwiseAbs().maxCoeff(&joint);
-    if (difference > threshold_) {
-        return fmt::format("ERROR start joint {} differs by {:.2f} deg (limit {:.2f} deg)",
-            joint, difference * 180.0f / 3.14159265358979323846f,
-            threshold_ * 180.0f / 3.14159265358979323846f);
-    }
-    return {};
+    return command_continuity_error(before, after, threshold_);
 }
 
 std::string OnlineMotionService::status_locked() const
