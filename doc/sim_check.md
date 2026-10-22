@@ -23,7 +23,8 @@ python3 scripts/sim_check.py run /path/to/new-run aruco
 
 The default recognition interpreter is `.venv-sensors/bin/python`; override with
 `prepare --sensor-python ...`. Only controller/recognition/simulator run here;
-start the existing motion worker separately until the direct sender is available.
+the default TaskPromptRL sender converts in-process and sends directly to
+`ipc:///path/to/new-run/deploy.sock`, so no motion worker is needed.
 
 ```bash
 python3 scripts/sim_check.py joystick /path/to/new-run stand

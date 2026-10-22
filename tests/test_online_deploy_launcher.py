@@ -127,3 +127,25 @@ raise SystemExit(run_processes([[sys.executable, '-c', 'pass']], {str(SCRIPTS)!r
             timeout=5,
         )
         self.assertEqual(result.returncode, 0, result.stderr.decode())
+
+
+class LauncherArgumentsTest(unittest.TestCase):
+    def test_default_is_controller_only_and_endpoints_are_forwarded(self):
+        from unittest.mock import patch
+        sys.path.insert(0, str(SCRIPTS))
+        import run_online_deploy
+        arguments = ["launcher", "--environment", "sim",
+                     "--navigation-localization-source", "simulator",
+                     "--deploy-endpoint", "ipc:///tmp/custom_motion.sock",
+                     "--navigation-endpoint", "ipc:///tmp/custom_navigation.sock"]
+        with patch.object(sys, "argv", arguments), patch.object(run_online_deploy, "run_processes", return_value=0) as launch:
+            self.assertEqual(run_online_deploy.main(), 0)
+        commands, _ = launch.call_args.args
+        self.assertEqual(len(commands), 1)
+        self.assertEqual(commands[0][commands[0].index("--motion-endpoint")+1], "ipc:///tmp/custom_motion.sock")
+        self.assertEqual(commands[0][commands[0].index("--navigation-endpoint")+1], "ipc:///tmp/custom_navigation.sock")
+        with patch.object(sys, "argv", arguments+["--with-motion-worker"]), patch.object(run_online_deploy, "run_processes", return_value=0) as launch:
+            run_online_deploy.main()
+        commands, _ = launch.call_args.args
+        self.assertEqual(len(commands), 2)
+        self.assertTrue(commands[0][1].endswith("serve_motion_prompt.py"))

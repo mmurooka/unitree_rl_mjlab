@@ -144,6 +144,8 @@ inline po::variables_map helper(int argc, char** argv)
         ("domain-id", po::value<int>(&domain_id)->default_value(0), "Unitree DDS domain (not ROS_DOMAIN_ID)")
         ("glim-config", po::value<std::string>(&glim_config_path), "external GLIM config_path directory (read only)")
         ("sensor-model", po::value<std::string>(&sensor_model_path), "model-derived sensor kinematics YAML")
+        ("motion-endpoint", po::value<std::string>(), "override the OnlineMimic ZMQ endpoint")
+        ("navigation-endpoint", po::value<std::string>(), "override the Navigation ZMQ endpoint")
         ("navigation-localization-source",
          po::value<std::string>(&navigation_localization_source),
          "required Navigation localization source: glim or simulator")
@@ -177,6 +179,10 @@ inline po::variables_map helper(int argc, char** argv)
     }
     if (sensor_model_path.empty())
         sensor_model_path = (proj_dir / "../../../config/g1_sensor_frames.yaml").lexically_normal().string();
+    if (vm.count("motion-endpoint"))
+        config["FSM"]["OnlineMimic"]["endpoint"] = vm["motion-endpoint"].as<std::string>();
+    if (vm.count("navigation-endpoint"))
+        config["FSM"]["Navigation"]["endpoint"] = vm["navigation-endpoint"].as<std::string>();
 
 #ifndef NDEBUG
     spdlog::set_level(spdlog::level::debug);

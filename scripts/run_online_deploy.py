@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Launch the motion conversion worker and G1 controller together."""
+"""Launch the G1 controller, optionally with the legacy conversion worker."""
 
 import argparse
 import os
@@ -28,10 +28,13 @@ def main():
     parser.add_argument("--domain-id", type=int, default=0)
     parser.add_argument("--glim-config", type=Path)
     parser.add_argument("--sensor-model", type=Path)
+    parser.add_argument("--with-motion-worker", action="store_true",
+                        help="start the legacy worker for send_motion_prompt.py --backend worker")
     parser.add_argument("--endpoint", default="ipc:///tmp/task_prompt_rl_motion.sock")
     parser.add_argument(
         "--deploy-endpoint", default="ipc:///tmp/task_prompt_rl_deploy.sock"
     )
+    parser.add_argument("--navigation-endpoint")
     parser.add_argument("--debug-dir", default="/tmp/task_prompt_rl/received")
     parser.add_argument("--no-save-debug", action="store_true")
     args = parser.parse_args()
@@ -54,7 +57,10 @@ def main():
     if args.no_save_debug:
         worker.append("--no-save-debug")
     controller = [args.controller, "--network", args.network,
-                  "--environment", args.environment, "--domain-id", str(args.domain_id)]
+                  "--environment", args.environment, "--domain-id", str(args.domain_id),
+                  "--motion-endpoint", args.deploy_endpoint]
+    if args.navigation_endpoint is not None:
+        controller.extend(["--navigation-endpoint", args.navigation_endpoint])
     if args.glim_config is not None:
         controller.extend(["--glim-config", str(args.glim_config.resolve())])
     if args.sensor_model is not None:
@@ -66,7 +72,7 @@ def main():
                 args.navigation_localization_source,
             ]
         )
-    return run_processes([worker, controller], root)
+    return run_processes(([worker] if args.with_motion_worker else []) + [controller], root)
 
 
 def run_processes(commands, cwd):
