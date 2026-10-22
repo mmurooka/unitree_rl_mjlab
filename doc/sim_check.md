@@ -119,3 +119,18 @@ This is evaluation truth only. Timestamp-matched root poses are aligned once
 in XY and yaw at the first sample, preserving subsequent drift and directional
 errors. The output reports missing samples and rejects mixed source files.
 These errors describe ideal simulated sensors, not real-world calibration.
+
+For post-sequence box placement, explicitly evaluate the labeled truth recording
+without passing it back to control:
+
+```bash
+python scripts/evaluate_box_placement.py /path/to/run/poses.jsonl \
+  /path/to/run/sequence/events.jsonl --table-top .56 \
+  --table-half .2 .275 --box-half .13 .175 .095 \
+  --output /path/to/run/placement_evaluation.json
+```
+
+These dimensions belong to the supplied scene. The tool requires a completed
+sequence and a post-completion window, then checks box center over the table,
+bottom near its top, low tilt and stable position. This is finite geometric
+evaluation, not contact-force sensing or proof of reliability over many trials.
