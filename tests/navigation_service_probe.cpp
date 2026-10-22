@@ -12,8 +12,16 @@ int main(int argc, char** argv) {
         bool got=false;
         if (service.transition_ready(NavigationGoalService::Mode::Velocity)) got=service.start_navigation(goal);
         else got=service.consume_navigation_goal(goal);
-        if (got) std::cout << goal.clock_domain << ' ' << goal.observation_stamp << ' '
+        if (got) {
+            // Keep the goal live long enough to exercise RUNNING and supersession.
+            if (goal.x == 9) service.leave_navigation();
+            else if (goal.x == 8) service.finish_goal(goal.id, false, "test rejection");
+            else if (goal.x != 7) service.finish_goal(goal.id, true);
+            // A delayed report for an older goal must never finish this one.
+            service.finish_goal(goal.id - 1, true);
+            std::cout << goal.clock_domain << ' ' << goal.observation_stamp << ' '
                            << goal.x << ' ' << goal.y << ' ' << goal.yaw << std::endl;
+        }
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 }

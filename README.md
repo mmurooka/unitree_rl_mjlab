@@ -219,9 +219,10 @@ Navigation is started externally with TaskPromptRL's
 `scripts/send_navigation_goal.py`. The script selects a `frame_name` from
 `/frame_pose_list` and generates a goal `offset` metres before its local
 +x-facing side, with the goal yaw matching the frame yaw. If the selected
-ArUco marker is initially outside the camera view, the sender performs bounded
-relative quarter-turn searches (or one explicit `--search-yaw` turn), then uses
-the observed marker pose with its image timestamp. Object truth is reserved for evaluation. Sending from
+ArUco marker is initially outside the camera view, first send an explicit relative
+`--goal x y yaw --wait`, then send a fresh marker goal. Missing markers cause a
+timeout without commanding motion. Object truth is reserved for evaluation.
+Sending from
 Velocity or a finished/holding OnlineMimic automatically enters Navigation;
 sending during Navigation replaces the active goal. OnlineMimic reports `BUSY`
 until its motion has finished.
@@ -330,24 +331,27 @@ source venv-tprl/bin/activate
 python scripts/send_navigation_goal.py --frame-name carry_box --offset 0.7
 ```
 
-Marker search moves backward 0.15 m while turning. For a real robot, provide
-the approximate target direction in radians relative to its current heading;
-this bypasses the simulation ground-truth topic:
+For a known viewpoint, move to a relative goal and wait for arrival before
+requesting the next observed marker:
 
 ```bash
-python scripts/send_navigation_goal.py \
-  --frame-name carry_box \
-  --offset 0.7 \
-  --search-yaw 1.57
+python scripts/send_navigation_goal.py --goal -0.15 0 2.094395 --wait
+python scripts/send_navigation_goal.py --frame-name place_table --offset 0.3 --wait
 ```
 
-Use `--search-backoff` to change the backward distance. The ArUco publisher
-shows the annotated robot camera when `frame_pose_list.aruco.display` is true.
+The first goal is a final pose (15 cm behind, 120 degrees left) in the frozen
+start-root frame, not an ordered list of motions. To require backing up before
+turning, send `--goal -0.15 0 0 --wait`, then `--goal 0 0 2.094395 --wait`.
+`--wait` uses the controller's goal-specific position/yaw arrival result.
+A timeout does not cancel or resend the goal. `--search-yaw` and implicit marker
+search are removed. See [goal protocol](doc/navigation_goals.md).
+The ArUco publisher shows the annotated robot camera when
+`frame_pose_list.aruco.display` is true.
 
 `/frame_pose_list` uses `std_msgs/msg/String` with a JSON payload. Each element
 has `frame_name` and
-`rel_pose=[x,y,z,qx,qy,qz,qw]`. All named non-robot MuJoCo bodies are included,
-so newly added scene objects are selectable without a per-object publisher.
+`rel_pose=[x,y,z,qx,qy,qz,qw]`. Only currently detected, configured ArUco
+frames are included; simulation object truth is on a separate evaluation topic.
 No separate approach-direction metadata is used: the selected frame's yaw
 defines its front. The controller path is anchored to the localization pose
 captured when the goal starts. At each policy step,

@@ -24,15 +24,32 @@ class NavigationProtocolTest(unittest.TestCase):
                     sock.setsockopt(zmq.LINGER, 0)
                     sock.setsockopt(zmq.RCVTIMEO, 3000)
                     sock.connect(endpoint)
-                    for cmd in ('GOAL_AT simulation 12.5 1 2 .3', 'GOAL 1 2 .3', 'SEARCH .1 1.57'):
+                    def request(cmd):
                         sock.send_string(cmd)
-                        self.assertEqual(sock.recv_string(), 'STARTED')
-                    first = process.stdout.readline().split()
-                    self.assertEqual(first[:2], ['simulation', '12.5'])
+                        return sock.recv_string()
+                    self.assertEqual(request('PROGRESS'), 'IDLE 0')
+                    last_id = 0
+                    for cmd, state in (
+                        ('GOAL_AT simulation 12.5 1 2 .3', 'REACHED'),
+                        ('GOAL 7 2 .3', 'RUNNING'),
+                        ('GOAL 8 2 .3', 'ERROR'),
+                        ('GOAL 9 2 .3', 'CANCELLED'),
+                    ):
+                        response = request(cmd).split()
+                        self.assertEqual(response[0], 'STARTED')
+                        goal_id = int(response[1])
+                        self.assertGreater(goal_id, last_id)
+                        last_id = goal_id
+                        # stdout is emitted after the terminal status is set.
+                        line = process.stdout.readline().split()
+                        if cmd.startswith('GOAL_AT'):
+                            self.assertEqual(line[:2], ['simulation', '12.5'])
+                        progress = request('PROGRESS').split()
+                        self.assertEqual(progress[:2], [state, str(goal_id)])
                     for cmd in ('GOAL_AT unknown 12 1 2 3', 'GOAL_AT ros -1 1 2 3',
-                                'GOAL_AT ros nan 1 2 3', 'GOAL_AT ros 12 1 2', 'GOAL 1 2 3 extra'):
-                        sock.send_string(cmd)
-                        self.assertTrue(sock.recv_string().startswith('ERROR'))
+                                'GOAL_AT ros nan 1 2 3', 'GOAL_AT ros 12 1 2',
+                                'GOAL 1 2 3 extra', 'SEARCH .1 1.57'):
+                        self.assertTrue(request(cmd).startswith('ERROR'))
             finally:
                 process.terminate()
                 process.wait(timeout=5)

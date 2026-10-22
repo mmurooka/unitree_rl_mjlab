@@ -1,11 +1,13 @@
 #include "NavigationGoalService.h"
 
 #include <cmath>
+#include <chrono>
 #include <sstream>
 
 std::shared_ptr<NavigationGoalService> navigation_goal_service;
 
 NavigationGoalService::NavigationGoalService(const YAML::Node& cfg)
+    : next_id_(std::chrono::steady_clock::now().time_since_epoch().count())
 {
     socket_.set(zmq::sockopt::linger, 0);
     socket_.set(zmq::sockopt::rcvtimeo, 100);
@@ -32,6 +34,10 @@ void NavigationGoalService::cancel_locked(const std::string& reason)
         request_.reset();
     }
     transitioning_ = false;
+    if (progress_ == "RUNNING") {
+        progress_ = "CANCELLED";
+        progress_reason_ = reason;
+    }
 }
 
 void NavigationGoalService::activate_source(Mode mode, bool accepting)
@@ -125,9 +131,7 @@ bool NavigationGoalService::start_navigation(Goal& goal)
     std::lock_guard<std::mutex> lock(mutex_);
     const bool has_goal = transitioning_ && request_ && request_->claimed;
     if (has_goal) {
-        goal = request_->goal;
-        request_->result.set_value("STARTED");
-        request_.reset();
+        accept_locked(goal);
     } else {
         cancel_locked("ERROR Navigation entered without the requested goal");
     }
@@ -143,10 +147,27 @@ bool NavigationGoalService::consume_navigation_goal(Goal& goal)
     if (mode_ != Mode::Navigation || !accepting_ || !request_) {
         return false;
     }
-    goal = request_->goal;
-    request_->result.set_value("STARTED");
-    request_.reset();
+    accept_locked(goal);
     return true;
+}
+
+void NavigationGoalService::accept_locked(Goal& goal)
+{
+    goal = request_->goal;
+    goal.id = ++next_id_;
+    active_id_ = goal.id;
+    progress_ = "RUNNING";
+    progress_reason_.clear();
+    request_->result.set_value("STARTED " + std::to_string(goal.id));
+    request_.reset();
+}
+
+void NavigationGoalService::finish_goal(uint64_t id, bool reached, const std::string& reason)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (id != active_id_ || progress_ != "RUNNING") return;
+    progress_ = reached ? "REACHED" : "ERROR";
+    progress_reason_ = reason;
 }
 
 std::string NavigationGoalService::status_locked() const
@@ -170,6 +191,10 @@ void NavigationGoalService::receive()
         if (command == "STATUS") {
             std::lock_guard<std::mutex> lock(mutex_);
             reply = status_locked();
+        } else if (command == "PROGRESS") {
+            std::lock_guard<std::mutex> lock(mutex_);
+            reply = progress_ + " " + std::to_string(active_id_);
+            if (!progress_reason_.empty()) reply += " " + progress_reason_;
         } else {
             std::istringstream stream(command);
             std::string verb;
@@ -190,21 +215,9 @@ void NavigationGoalService::receive()
                     std::isfinite(goal.x) &&
                     std::isfinite(goal.y) &&
                     std::isfinite(goal.yaw);
-            } else if (verb == "SEARCH") {
-                float backoff = 0.0f;
-                valid =
-                    bool(stream >> backoff >> goal.yaw) &&
-                    !(stream >> extra) &&
-                    std::isfinite(backoff) &&
-                    backoff >= 0.0f &&
-                    std::isfinite(goal.yaw);
-                if (valid) {
-                    goal.x = -backoff;
-                    goal.marker_search = true;
-                }
             }
             if (!valid) {
-                reply = "ERROR expected GOAL x y yaw, GOAL_AT clock stamp x y yaw or SEARCH backoff yaw "
+                reply = "ERROR expected GOAL x y yaw, GOAL_AT clock stamp x y yaw "
                         "with finite values";
             } else {
                 std::shared_ptr<Request> request;

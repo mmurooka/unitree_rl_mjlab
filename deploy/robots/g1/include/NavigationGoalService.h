@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <future>
+#include <cstdint>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -18,7 +19,7 @@ public:
         float x{0.0f};
         float y{0.0f};
         float yaw{0.0f};
-        bool marker_search{false};
+        uint64_t id{0};
         double observation_stamp{-1.0};
         std::string clock_domain;
     };
@@ -39,6 +40,8 @@ public:
     bool transition_ready(Mode mode);
     bool start_navigation(Goal& goal);
     bool consume_navigation_goal(Goal& goal);
+    // Terminal results are latched for the latest accepted goal.
+    void finish_goal(uint64_t id, bool reached, const std::string& reason = "");
 
 private:
     struct Request {
@@ -51,10 +54,15 @@ private:
     void leave_source(Mode mode, const std::string& name);
     void cancel_locked(const std::string& reason);
     std::string status_locked() const;
+    void accept_locked(Goal& goal);
     void receive();
 
     std::mutex mutex_;
     Mode mode_{Mode::Inactive};
+    uint64_t next_id_;
+    uint64_t active_id_{0};
+    std::string progress_{"IDLE"};
+    std::string progress_reason_;
     bool accepting_{false};
     bool transitioning_{false};
     std::shared_ptr<Request> request_;
