@@ -32,7 +32,8 @@ Validation: `python -m unittest discover -s tests -p test_robot_frames.py`.
 The tests use MuJoCo world poses only as an independent evaluation oracle, never
 as input to the production transform. They cover random root/waist attitudes,
 map-yaw invariance, inverted mounts, IMU offsets, stale data and clock resets.
-This foundation does not by itself remove the old TF-dependent runtime path.
+ArUco recognition now uses this function directly; the former TF-dependent
+runtime path has been removed.
 
 ## Navigation runtime
 

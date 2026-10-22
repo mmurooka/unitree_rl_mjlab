@@ -68,3 +68,39 @@ python3 scripts/sim_check.py stop /path/to/new-run
 The helper verifies saved PID start times before signaling. The launcher restores
 terminal settings and kills its child process groups on Ctrl+C/SIGTERM, including
 remaining descendants. Stop separately launched GLIM/recorders in their terminals.
+
+For offline command/measurement comparison, use the SDK Python environment:
+
+```bash
+.venv-sensors/bin/python scripts/record_robot_state.py /path/to/new-run/joints.jsonl \
+  --environment sim --network lo --domain-id 83 --duration 180
+```
+
+This receiver publishes no commands. It records motor commands and measured
+angles, velocities and body IMU orientation separately. Measured `tick_ms` is
+simulation time in sim and robot boot time on real hardware; receipt timestamps
+are monotonic wall time. Commands have receipt timestamps only. These timestamps
+do not imply that a command and a measurement are simultaneous.
+
+### Explicit one-time viewpoint calibration
+
+The user authorized using object truth once to choose fixed relative waypoints
+for this scene. `scripts/calibrate_sim_viewpoint.py` reconstructs a recorded
+carrying pose from `poses.jsonl` and `joints.jsonl`, and renders candidate camera
+views offline. It never sends goals or connects to the running simulator.
+
+```bash
+MUJOCO_GL=egl python scripts/calibrate_sim_viewpoint.py /path/to/recorded-run \
+  /path/to/new-calibration --entry-stamp 139.5 --posture-stamp 150 \
+  --back .9 1.2 1.5 --yaw .8 1.0 1.2
+```
+
+Use the training Python with MuJoCo 3.5 for this scene. Timestamps above are an
+example from the recorded trial, not defaults for later runs. The tool uses
+evaluation object poses and the fixed scene table pose to reconstruct the world
+root pose. It freezes posture and box-to-root pose: visibility does not prove
+collision clearance, stable carrying, or successful dynamic execution.
+Save the chosen constants and their calibration provenance, then validate them
+with the normal image-based pipeline. Future transport must use those frozen
+constants without reading object truth. This exception does not permit truth
+input to marker recognition or camera transforms.
