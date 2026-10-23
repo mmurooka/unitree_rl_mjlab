@@ -11,7 +11,11 @@ OnlineMotionService::OnlineMotionService(const YAML::Node& cfg)
     next_playback_id_ = std::chrono::steady_clock::now().time_since_epoch().count();
     threshold_ = cfg["start_joint_threshold_degrees"].as<float>(20.0f) *
                  3.14159265358979323846f / 180.0f;
-    if (!std::isfinite(threshold_) || threshold_ <= 0) {
+    leg_threshold_ = cfg["start_leg_joint_threshold_degrees"].as<float>(
+        cfg["start_joint_threshold_degrees"].as<float>(20.0f)) *
+        3.14159265358979323846f / 180.0f;
+    if (!std::isfinite(threshold_) || threshold_ <= 0 ||
+        !std::isfinite(leg_threshold_) || leg_threshold_ <= 0) {
         throw std::runtime_error("Invalid online motion start joint threshold");
     }
     socket_.set(zmq::sockopt::linger, 0);
@@ -174,7 +178,7 @@ void OnlineMotionService::update_view_frame(int frame)
 std::string OnlineMotionService::command_start_error(
     const std::vector<float>& before, const std::vector<float>& after) const
 {
-    return command_continuity_error(before, after, threshold_);
+    return command_continuity_error(before, after, threshold_, leg_threshold_);
 }
 
 std::string OnlineMotionService::status_locked() const

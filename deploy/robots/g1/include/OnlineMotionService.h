@@ -44,7 +44,7 @@ private:
     void receive();
     void cancel_locked(const std::string& reason);
     std::string status_locked() const;
-    float threshold_;
+    float threshold_, leg_threshold_;
     nlohmann::json playback_view_;
     uint64_t next_playback_id_{0};
     std::mutex mutex_;

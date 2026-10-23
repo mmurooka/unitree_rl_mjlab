@@ -36,6 +36,7 @@ int main(int argc, char** argv) {
     // Test-only generous limit makes the good fixture independent of policy
     // version; a 1000-rad previous command below must still be rejected.
     cfg["start_joint_threshold_degrees"] = 180;
+    cfg["start_leg_joint_threshold_degrees"] = 180;
     FSMStringMap.insert({1, "Passive"});
     FSMStringMap.insert({3, "Velocity"});
     FSMStringMap.insert({4, "Navigation"});
