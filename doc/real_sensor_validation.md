@@ -170,10 +170,13 @@ or an acceptable calibration threshold. A multi-orientation observation or an
 independent factory sensor-axis/extrinsic measurement is needed to determine it.
 No real walking has been tested with this correction.
 
-The operator estimated the marker at approximately **0.80 m forward, 0.20 m left**
-from the pelvis center. The above root-yaw estimate becomes approximately
-**0.87 m forward, 0.18 m left** when only the heading reference is changed to the
-chest direction (keeping the pelvis origin). This agrees roughly if the estimate
-used chest-forward, but does not agree in lateral sign if it used pelvis-forward.
-Confirmation of that heading reference and marker height is still pending;
-absolute root-relative calibration is therefore not declared complete.
+The operator clarified that the approximate **0.80 m forward, 0.20 m left**
+estimate uses the **head camera**, not the pelvis, as reference. Using the head
+camera origin and the horizontal projection of its optical forward axis gives
+**0.838 m forward, 0.123 m left** for the audited sample: differences of +3.8 cm
+and -7.7 cm from the rough estimate. Optical XYZ remains (-0.158, -0.212, 0.951) m;
+optical depth is not horizontal forward distance because the camera points down.
+The model attaches the fixed head-camera mount to the torso kinematic chain; it
+does not imply a camera physically mounted on the chest. The supplied estimate
+is too approximate, and lacks height, to certify or fit absolute camera mounting
+or pelvis-relative position. No camera extrinsic was tuned to force agreement.
