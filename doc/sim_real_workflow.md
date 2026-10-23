@@ -44,8 +44,7 @@ cd ~/src/unitree_rl_mjlab
 ```
 
 The simulator/controller read that directory to match sensor frames and extrinsics;
-they do not write it. `SLAM/GLIM_config` is a ROS-settings reference, not the active
-complete GLIM installation. Unitree DDS `--domain-id` defaults to 0; keep it equal
+they do not write it. Unitree DDS `--domain-id` defaults to 0; keep it equal
 on simulator, controller and recognition. ROS_DOMAIN_ID is independent and must
 match all ROS sensor consumers and GLIM. Run only one controller for these endpoints.
 
