@@ -13,6 +13,7 @@ from pathlib import Path
 
 import mujoco
 import numpy as np
+import yaml
 from PIL import Image
 
 from robot_frames import horizontal_to_root, rigid_inverse, transform
@@ -52,6 +53,13 @@ def main():
                         row.get('reference_frame') != 'root_yaw' for row in truth):
         raise ValueError('requires explicitly labeled root_yaw evaluation truth')
     model = mujoco.MjModel.from_xml_path(str(ROOT / 'src/assets/robots/unitree_g1/xmls/scene_g1_table_box_glim.xml'))
+    # Match the recorded sensor aspect ratio; a 4:3 render changes visibility.
+    config = yaml.safe_load((args.run / "sim/config.yaml").read_text())
+    width, height = int(config["d435"]["width"]), int(config["d435"]["height"])
+    if width <= 0 or height <= 0:
+        raise ValueError("invalid recorded camera resolution")
+    model.vis.global_.offwidth = max(model.vis.global_.offwidth, width)
+    model.vis.global_.offheight = max(model.vis.global_.offheight, height)
     data = mujoco.MjData(model)
     mujoco.mj_forward(model, data)
     table = model.body('pickup_table').id
@@ -83,7 +91,7 @@ def main():
         for yaw in args.yaw:
             candidates.append((f'back_{back:.3f}_yaw_{yaw:.3f}', entry @ yaw_pose(-back, 0, yaw), back, yaw))
     results = []
-    with mujoco.Renderer(model, height=480, width=640) as renderer:
+    with mujoco.Renderer(model, height=height, width=width) as renderer:
         for name, pose, back, yaw in candidates:
             data.qpos[joint_addresses] = q
             robot = pose @ tilt
@@ -98,6 +106,7 @@ def main():
                                 world_root=pose.tolist()))
     (args.output / 'calibration.json').write_text(json.dumps(dict(
         source_run=str(args.run.resolve()), entry_stamp=entry_stamp, posture_stamp=posture_stamp,
+        image_width=width, image_height=height,
         truth_use='one-time offline viewpoint calibration explicitly authorized by user',
         limitations='Frozen measured posture and box-to-root pose; no dynamics, slip, or collision validation. '
                      'Candidates are relative goal endpoints; verify actual sequential execution separately.',

@@ -160,7 +160,7 @@ For the whole supplied scene, choose **one** workflow:
 - `python scripts/run_transport.py --execute`: run the reviewed plan automatically.
 - Viser browser: preview and explicitly execute each command.
 
-The scene-specific plan uses separate backward **1.2 m** and left-turn **1.0 rad**
+The scene-specific plan uses separate backward **0.4 m** and left-turn **0.85 rad**
 goals before observing the destination marker. Those constants were selected once
 with offline evaluation truth; runtime uses the fixed constants and fresh images.
 Do not apply this plan unchanged to a different layout. MotionPrompt box dimensions
