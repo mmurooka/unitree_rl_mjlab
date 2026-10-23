@@ -31,13 +31,18 @@ run a plan adapted to the real layout.
 
 ## Common terminal setup
 
-Examples use ROS Humble, sibling repositories under `~/src` and the shared Python
-3.10 environment. Run this setup in each terminal. Replace the repository path
-with its actual location; sim and real use the same versioned `glim/config`:
+Reuse the `venv-tprl` environment created by the
+[TaskPromptRL README](https://github.com/isri-aist/TaskPromptRL#install).
+For ROS Humble it must use Python 3.10 and have the additional online dependencies
+described in the [online setup](https://github.com/isri-aist/TaskPromptRL/blob/main/doc/online_motion_prompt_quickstart.md#1-prepare-the-environment).
+No separately named virtual environment is required.
+
+Run this setup in each terminal. Replace both checkout paths and the venv name
+if yours differ; sim and real use the same versioned `glim/config`:
 
 ```bash
 source /opt/ros/humble/setup.bash
-source ~/src/TaskPromptRL/.venv-online-ros/bin/activate
+source /path/to/TaskPromptRL/venv-tprl/bin/activate
 export ROS_DOMAIN_ID=0
 cd /path/to/unitree_rl_mjlab
 export G1_GLIM_CONFIG="$(realpath glim/config)"
