@@ -37,13 +37,11 @@ For ROS Humble it must use Python 3.10 and have the additional online dependenci
 described in the [online setup](https://github.com/isri-aist/TaskPromptRL/blob/main/doc/online_motion_prompt_quickstart.md#1-prepare-the-environment).
 No separately named virtual environment is required.
 
-Run this setup in each terminal. Replace both checkout paths and the venv name
-if yours differ; sim and real use the same versioned `glim/config`:
+Run this setup in each terminal. Replace the checkout path with your actual
+location; sim and real use the same versioned `glim/config`:
 
 ```bash
 source /opt/ros/humble/setup.bash
-source /path/to/TaskPromptRL/venv-tprl/bin/activate
-export ROS_DOMAIN_ID=0
 cd /path/to/unitree_rl_mjlab
 export G1_GLIM_CONFIG="$(realpath glim/config)"
 ```
@@ -51,7 +49,15 @@ export G1_GLIM_CONFIG="$(realpath glim/config)"
 The simulator/controller read that directory to match sensor frames and extrinsics;
 they do not write it. Unitree DDS `--domain-id` defaults to 0; keep it equal
 on simulator, controller and recognition. ROS_DOMAIN_ID is independent and must
-match all ROS sensor consumers and GLIM. Run only one controller for these endpoints.
+match all ROS sensor consumers and GLIM. It defaults to 0 when unset, so no export
+is needed normally. If you use a custom ROS domain, set it consistently in the
+participating terminals. Run only one controller for these endpoints.
+
+Activate the TaskPromptRL venv only in the ArUco, real camera, Viser and task
+command terminals, as shown below. Simulator, external GLIM/Livox and the default
+controller launcher do not need it; the launcher uses system `python3`. Install
+the `.[online]` extra once using the linked online setup to provide both OpenCV
+and Viser. Replace all `/path/to/...` placeholders with your checkout locations.
 For GLIM/Livox installation and the driver build command, see the
 [GLIM setup guide](../glim/README.md).
 
@@ -75,7 +81,7 @@ and collisions still include them. See [simulator settings](../simulate/README.m
 ### 2. Controller and gamepad
 
 ```bash
-python scripts/run_online_deploy.py --network lo --environment sim \
+python3 scripts/run_online_deploy.py --network lo --environment sim \
   --navigation-localization-source glim --glim-config "$G1_GLIM_CONFIG"
 ```
 
@@ -106,6 +112,7 @@ reset, restart GLIM and submit a new goal rather than continuing across epochs.
 ### 4. Marker recognition
 
 ```bash
+source /path/to/TaskPromptRL/venv-tprl/bin/activate
 python aruco/frame_pose_publisher.py --environment sim --network lo
 ```
 
@@ -119,6 +126,7 @@ From TaskPromptRL, use read-only viewing alongside individual commands:
 
 ```bash
 cd /path/to/TaskPromptRL
+source venv-tprl/bin/activate
 python scripts/view_robot.py --live --environment sim --read-only
 ```
 
@@ -133,6 +141,7 @@ From TaskPromptRL, approach one observed marker:
 
 ```bash
 cd /path/to/TaskPromptRL
+source venv-tprl/bin/activate
 python scripts/send_navigation_goal.py --frame-name carry_box --offset 0.3 --wait
 ```
 
@@ -165,7 +174,7 @@ simulate/build/unitree_mujoco --network lo --disable-lidar \
 ```
 
 ```bash
-python scripts/run_online_deploy.py --network lo --environment sim \
+python3 scripts/run_online_deploy.py --network lo --environment sim \
   --navigation-localization-source simulator
 ```
 
@@ -202,11 +211,12 @@ export ROBOT_INTERFACE=YOUR_ROBOT_INTERFACE
 Start recognition and deploy in separate terminals:
 
 ```bash
+source /path/to/TaskPromptRL/venv-tprl/bin/activate
 python aruco/frame_pose_publisher.py --environment real --network "$ROBOT_INTERFACE"
 ```
 
 ```bash
-python scripts/run_online_deploy.py --network "$ROBOT_INTERFACE" --environment real \
+python3 scripts/run_online_deploy.py --network "$ROBOT_INTERFACE" --environment real \
   --navigation-localization-source glim --glim-config "$G1_GLIM_CONFIG"
 ```
 
@@ -214,6 +224,7 @@ For the Unitree JPEG camera bridge, the actual stream and its calibration must
 both be 640×480. Start it in another terminal:
 
 ```bash
+source /path/to/TaskPromptRL/venv-tprl/bin/activate
 python scripts/camera_opencv.py "$ROBOT_INTERFACE" --no-display \
   --calibration /path/to/actual_640x480_calibration.yaml
 ```
