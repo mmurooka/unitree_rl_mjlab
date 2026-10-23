@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from array import array
 import json
 import math
 from dataclasses import dataclass
@@ -369,7 +370,7 @@ class ArucoFramePosePublisher(Node):
                 output = CompressedImage()
                 output.header = header
                 output.format = "bgr8; jpeg compressed bgr8"
-                output.data = encoded.tobytes()
+                output.data = array("B", encoded.tobytes())
                 self.annotated_publisher.publish(output)
         if not self.display_enabled:
             return

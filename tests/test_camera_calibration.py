@@ -27,6 +27,20 @@ def synthetic_calibration():
     }
 
 
+class ImageMessageTest(unittest.TestCase):
+    def test_noncontiguous_bgr_pixels_and_stamp_survive_serialization(self):
+        from builtin_interfaces.msg import Time
+        from array import array
+        image = np.arange(72, dtype=np.uint8).reshape(4, 6, 3)[:, ::2]
+        stamp = Time(sec=12, nanosec=34)
+        msg = camera.image_message(image, "optical", stamp)
+        self.assertIsInstance(msg.data, array)
+        self.assertEqual(msg.header.stamp, stamp)
+        self.assertEqual((msg.width, msg.height, msg.step), (3, 4, 9))
+        np.testing.assert_array_equal(
+            np.frombuffer(msg.data, np.uint8).reshape(4, 3, 3), image)
+
+
 class CalibrationGeometryTest(unittest.TestCase):
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()

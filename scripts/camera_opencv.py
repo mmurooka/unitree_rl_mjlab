@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from array import array
 from dataclasses import dataclass, replace
 import hashlib
 import json
@@ -206,7 +207,7 @@ def image_message(image: np.ndarray, frame_id: str, stamp: Any) -> Image:
     message.encoding = "bgr8"
     message.is_bigendian = False
     message.step = width * 3
-    message.data = contiguous.tobytes()
+    message.data = array("B", contiguous.tobytes())
     return message
 
 
@@ -313,13 +314,14 @@ class G1CameraPublisher(Node):
                 self.warn_throttled("GetImageSample returned an empty image")
                 continue
 
+            # Software receipt time, before decode/resize/serialization.
+            stamp = self.get_clock().now().to_msg()
             encoded = np.frombuffer(bytes(data), dtype=np.uint8)
             image = cv2.imdecode(encoded, cv2.IMREAD_COLOR)
             if image is None:
                 self.warn_throttled("failed to decode the camera JPEG frame")
                 continue
 
-            stamp = self.get_clock().now().to_msg()
             height, width = image.shape[:2]
             if self.last_image is None:
                 self.get_logger().info(
