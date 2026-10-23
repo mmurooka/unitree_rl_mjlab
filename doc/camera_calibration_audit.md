@@ -14,10 +14,12 @@ source /opt/ros/humble/setup.bash
 cd /path/to/unitree_rl_mjlab
 source /path/to/TaskPromptRL/venv-tprl/bin/activate
 python scripts/camera_opencv.py YOUR_ROBOT_INTERFACE --no-display \
-  --calibration /path/to/native_stream_calibration.yaml
+  --calibration aruco/calibrations/d435i_243122071510_color_1920x1080.yaml
 ```
 
-Supply calibration for the **received JPEG before resizing**.
+The file above is included in this repository and is for the checked D435i
+serial **243122071510** only. For another camera, replace it with that device's
+calibration for the **received JPEG before resizing**.
 The decoded dimensions must exactly match that calibration; a mismatch stops
 publication. No default or guessed intrinsics are used.
 The bridge resizes the complete 16:9 image to 960×540 without cropping,
@@ -39,12 +41,8 @@ The checked camera is **D435i serial 243122071510**, firmware 5.15.1.55.
 Its native color profile is 1920×1080. Calibration read from the device using
 `rs-enumerate-devices -c` is stored in
 [the serial-specific YAML](../aruco/calibrations/d435i_243122071510_color_1920x1080.yaml).
-Use that file only for this camera and this delivered profile:
-
-```bash
-python scripts/camera_opencv.py YOUR_ROBOT_INTERFACE --no-display \
-  --calibration aruco/calibrations/d435i_243122071510_color_1920x1080.yaml
-```
+The startup command above uses this file. Use it only for this camera and this
+delivered profile.
 
 The factory reports Inverse Brown Conrady with all five coefficients zero;
 zero-distortion plumb_bob is equivalent here. Do not apply that equivalence to

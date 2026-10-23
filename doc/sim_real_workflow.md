@@ -311,8 +311,9 @@ python3 scripts/run_online_deploy.py --network "$ROBOT_INTERFACE" --environment 
   --navigation-localization-source glim
 ```
 
-For the Unitree JPEG camera bridge, supply calibration for the native received
-image. The PC resizes the complete 16:9 image to 960×540 with matching CameraInfo. Start it
+For the checked robot camera (D435i serial **243122071510**), use the tracked
+calibration file shown below. For another camera, supply its own calibration for
+the native received image. The PC resizes the complete 16:9 image to 960×540 with matching CameraInfo. Start it
 in another terminal:
 
 ```bash
@@ -320,7 +321,7 @@ source /opt/ros/humble/setup.bash
 cd /path/to/unitree_rl_mjlab
 source /path/to/TaskPromptRL/venv-tprl/bin/activate
 python scripts/camera_opencv.py "$ROBOT_INTERFACE" --no-display \
-  --calibration /path/to/native_stream_calibration.yaml
+  --calibration aruco/calibrations/d435i_243122071510_color_1920x1080.yaml
 ```
 
 The SDK cannot select resolution or retrieve intrinsics. The
