@@ -118,7 +118,7 @@ before issuing commands. See [frames and timestamp rules](sensor_frames.md).
 From TaskPromptRL, use read-only viewing alongside individual commands:
 
 ```bash
-cd ~/src/TaskPromptRL
+cd /path/to/TaskPromptRL
 python scripts/view_robot.py --live --environment sim --read-only
 ```
 
@@ -132,7 +132,7 @@ for recording/replay. The viewer does not start sensors or g1_ctrl.
 From TaskPromptRL, approach one observed marker:
 
 ```bash
-cd ~/src/TaskPromptRL
+cd /path/to/TaskPromptRL
 python scripts/send_navigation_goal.py --frame-name carry_box --offset 0.3 --wait
 ```
 
@@ -186,19 +186,27 @@ not forward a PC-connected Xbox directly to a real robot.
 The existing G1 preparation procedure is to power on while suspended, wait for
 zero-torque mode, then use `L2 + R2` to enter debug/damping mode. Connect Ethernet
 and configure the PC interface for the robot network (the existing example is
-`192.168.123.222/24`). Select the actual interface in all commands below. Confirm
+`192.168.123.222/24`; choose a free host address on the configured robot subnet). Confirm
 the robot's low-level control preparation using its established operating procedure.
 Once g1_ctrl is ready, use the remote's `L2 + Up` for FixStand and `R2 + A` for
 Velocity; physical support release follows the real-robot procedure.
 
-Start recognition and deploy in separate terminals (replace the interface):
+Set the actual robot-facing network interface in each real-hardware terminal.
+Find its name with `ip -brief link`; names vary between PCs. For example, replace
+`YOUR_ROBOT_INTERFACE` below with the selected interface name:
 
 ```bash
-python aruco/frame_pose_publisher.py --environment real --network enx9c69d37c1711
+export ROBOT_INTERFACE=YOUR_ROBOT_INTERFACE
+```
+
+Start recognition and deploy in separate terminals:
+
+```bash
+python aruco/frame_pose_publisher.py --environment real --network "$ROBOT_INTERFACE"
 ```
 
 ```bash
-python scripts/run_online_deploy.py --network enx9c69d37c1711 --environment real \
+python scripts/run_online_deploy.py --network "$ROBOT_INTERFACE" --environment real \
   --navigation-localization-source glim --glim-config "$G1_GLIM_CONFIG"
 ```
 
@@ -206,7 +214,7 @@ For the Unitree JPEG camera bridge, the actual stream and its calibration must
 both be 640×480. Start it in another terminal:
 
 ```bash
-python scripts/camera_opencv.py enx9c69d37c1711 --no-display \
+python scripts/camera_opencv.py "$ROBOT_INTERFACE" --no-display \
   --calibration /path/to/actual_640x480_calibration.yaml
 ```
 

@@ -8,6 +8,10 @@ It does not modify the normal manual-start configuration. The Python scripts and
 policy assets remain linked by path to this checkout: preserve its commit and
 avoid changing them during a run.
 
+Activate the TaskPromptRL venv described in the [startup workflow](sim_real_workflow.md)
+first; it must provide the ROS/SDK recognition dependencies. The examples below
+explicitly select that active interpreter, so no `.venv-sensors` directory is needed.
+
 For GLIM mode, run from this repository root and select the same versioned
 configuration as the [normal startup workflow](../glim/README.md):
 
@@ -16,7 +20,8 @@ export G1_GLIM_CONFIG="$(realpath glim/config)"
 ```
 
 ```bash
-python3 scripts/sim_check.py prepare /path/to/new-run --localization simulator
+python scripts/sim_check.py prepare /path/to/new-run --localization simulator \
+  --sensor-python "$(command -v python)"
 # Or: --localization glim --glim-config "$G1_GLIM_CONFIG"
 ```
 
@@ -28,8 +33,9 @@ python3 scripts/sim_check.py run /path/to/new-run controller
 python3 scripts/sim_check.py run /path/to/new-run aruco
 ```
 
-The default recognition interpreter is `.venv-sensors/bin/python`; override with
-`prepare --sensor-python ...`. Only controller/recognition/simulator run here;
+The helper's fallback recognition interpreter is `.venv-sensors/bin/python`;
+`--sensor-python` above overrides it with your active venv. Only
+controller/recognition/simulator run here;
 the default TaskPromptRL sender converts in-process and sends directly to
 `ipc:///path/to/new-run/deploy.sock`, so no motion worker is needed.
 
@@ -80,7 +86,7 @@ remaining descendants. Stop separately launched GLIM/recorders in their terminal
 For offline command/measurement comparison, use the SDK Python environment:
 
 ```bash
-.venv-sensors/bin/python scripts/record_robot_state.py /path/to/new-run/joints.jsonl \
+python scripts/record_robot_state.py /path/to/new-run/joints.jsonl \
   --environment sim --network lo --domain-id 83 --duration 180
 ```
 
@@ -103,7 +109,7 @@ MUJOCO_GL=egl python scripts/calibrate_sim_viewpoint.py /path/to/recorded-run \
   --back .9 1.2 1.5 --yaw .8 1.0 1.2
 ```
 
-Use the training Python with MuJoCo 3.5 for this scene. Timestamps above are an
+Use an active Python environment with MuJoCo 3.5 for this scene. Timestamps above are an
 example from the recorded trial, not defaults for later runs. The tool uses
 evaluation object poses and the fixed scene table pose to reconstruct the world
 root pose. It freezes posture and box-to-root pose: visibility does not prove

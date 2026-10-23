@@ -7,8 +7,15 @@ unverified YAML is not available as a fallback.
 
 ## Current Unitree JPEG bridge
 
+In each camera terminal, set the actual robot-facing interface (inspect names
+with `ip -brief link` and replace this placeholder):
+
 ```bash
-python scripts/camera_opencv.py enx9c69d37c1711 --no-display \
+export ROBOT_INTERFACE=YOUR_ROBOT_INTERFACE
+```
+
+```bash
+python scripts/camera_opencv.py "$ROBOT_INTERFACE" --no-display \
   --calibration /path/to/actual_640x480_calibration.yaml
 ```
 
@@ -53,7 +60,7 @@ against independent measurements. Retain camera serial/profile, calibration
 provenance and the delivered-image processing description with the YAML.
 
 ```bash
-python scripts/camera_opencv.py enx9c69d37c1711 --no-display \
+python scripts/camera_opencv.py "$ROBOT_INTERFACE" --no-display \
   --calibration /path/to/actual_640x480_calibration.yaml \
   --save-on-exit /path/to/frame.png
 ```

@@ -7,9 +7,9 @@ and up +Z. Waist motion and body tilt are included through model FK.
 Recognition does not use GLIM, ROS TF, or simulated world poses.
 
 Use Python 3.10 with ROS Humble (or Python matching your installed ROS), NumPy,
-PyYAML, OpenCV with ArUco, and `unitree_sdk2_python`. A ROS-compatible environment
-can be made with `python3 -m venv --system-site-packages .venv-sensors` after
-sourcing ROS. Install the official Unitree SDK2 Python package in that environment
+PyYAML, OpenCV with ArUco, and `unitree_sdk2_python`. Reuse the TaskPromptRL venv
+from the [startup workflow](../doc/sim_real_workflow.md#common-terminal-setup),
+including its online dependencies. Install the official Unitree SDK2 Python package there
 as for `scripts/camera_opencv.py`; DDS may require `CYCLONEDDS_HOME=/usr/local`.
 Do not use an unrelated Python version with the ROS binary modules.
 
