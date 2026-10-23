@@ -164,8 +164,8 @@ For the whole supplied scene, choose **one** workflow:
 
 - `bash scripts/run_transport_interactive.sh`: individual commands using Navigation arrival-or-Enter and Motion Enter waits.
   It starts with the box-approach goal; do not separately repeat that step.
-- `python scripts/run_transport.py --execute --manual --run-dir /path/to/new-sequence-run`: preview and confirm each plan step. Add `--sequence-run /path/to/new-sequence-run` to live Viser to display each pending goal/path or Mimic terminal posture.
-- `python scripts/run_transport.py --execute`: run the reviewed plan automatically.
+- Manual sequence with Viser: follow [the complete two-terminal procedure below](#manual-transport-with-viser-previews).
+- `python scripts/run_transport.py --execute --run-dir /path/to/new-sequence-run`: run the reviewed plan automatically.
 - Viser browser: preview and explicitly execute each command.
 
 The scene-specific plan uses separate backward **0.4 m** and left-turn **0.85 rad**
@@ -179,6 +179,59 @@ Motion sending exits on acceptance by default; `--wait` waits for Enter only. Co
 reports `FINISHED; holding final reference, READY` before the next manual stage.
 Navigation `--wait` ends on goal-specific arrival or Enter; neither indicates stationary feet.
 Enter ends CLI waiting without stopping motion. There are no separate shell reads.
+
+### Manual transport with Viser previews
+
+Use this procedure after starting the sensors, recognition, localization and
+controller, and entering Velocity. In simulation, release hang only after Velocity
+is active. These commands work with both GLIM and GLIM-free simulation. On real
+hardware, change the viewer's `--environment sim` to `--environment real`.
+
+Use the viewer command below **instead of** the optional viewer in step 5. Both
+terminals must use the same new run directory; the viewer can start before that
+directory exists.
+
+**Terminal A — start the passive viewer:**
+
+```bash
+source /opt/ros/humble/setup.bash
+cd /path/to/TaskPromptRL
+source venv-tprl/bin/activate
+python scripts/view_robot.py --live --environment sim \
+  --sequence-run /path/to/new-sequence-run
+```
+
+Open `http://127.0.0.1:8080`. `--sequence-run` automatically enables read-only
+viewing; the browser has no execution button for the sequence.
+
+**Terminal B — prepare, review and execute each step:**
+
+```bash
+source /opt/ros/humble/setup.bash
+cd /path/to/TaskPromptRL
+source venv-tprl/bin/activate
+python scripts/run_transport.py --execute --manual \
+  --run-dir /path/to/new-sequence-run
+```
+
+The run directory must be new/empty. Before each terminal prompt, Viser shows:
+
+| Step | Preview before Enter |
+|---|---|
+| Navigation | Yellow goal position/orientation and reference curve. |
+| Mimic | Yellow robot at the reference's final posture, overlaid with the blue measured robot. |
+
+Inspect the preview, then press **Enter in Terminal B** to execute that step.
+Preparation sends no motion request. The sequencer waits for Navigation arrival
+or Mimic playback completion before preparing the next step. Mimic executes the
+same converted file shown in the preview, without regeneration. Explicit relative
+Navigation goals remain relative to the execution start; marker-derived goals
+stay fixed in localization coordinates. The displayed curve/posture describes a
+reference, not guaranteed physical tracking or collision clearance.
+
+Ctrl+C in Terminal B stops further sequence commands; it does not stop the robot's
+active policy. Completion or cancellation clears the pending preview. Run logs,
+reference files and the reviewed plan are saved under the run directory.
 
 ## GLIM-free sim2sim
 
