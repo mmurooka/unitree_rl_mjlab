@@ -32,8 +32,7 @@ Validation: `python -m unittest discover -s tests -p test_robot_frames.py`.
 The tests use MuJoCo world poses only as an independent evaluation oracle, never
 as input to the production transform. They cover random root/waist attitudes,
 map-yaw invariance, inverted mounts, IMU offsets, stale data and clock resets.
-ArUco recognition now uses this function directly; the former TF-dependent
-runtime path has been removed.
+ArUco recognition calls this function directly and does not require ROS TF.
 
 ## Navigation runtime
 
@@ -53,7 +52,7 @@ a new goal; a running trajectory must not cross clock/map epochs. Ground-truth
 localization subscribes only to `rt/sportmodestate` and still uses the same root
 origin/heading convention. It needs neither GLIM nor a ROS-enabled controller.
 
-In Navigation CSV logs, legacy `slam_pose_*` columns now contain the **converted
+In Navigation CSV logs, `slam_pose_*` columns contain the **converted
 pelvis pose**, in the localization world frame. `raw_odom_*` retains the received
 GLIM IMU pose (or truth root pose for `simulator`). `localization_stamp_s` is the
 sample time and `localization_age_s` its age; `robot_*` is the displacement since

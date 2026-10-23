@@ -1,76 +1,72 @@
-# Installation Guide
+# Installation and G1 build
 
-## System Requirements
+Training and ROS-facing deployment use different Python environments. Keep them
+separate: the training example uses Python 3.11; ROS Humble Python modules require
+Python 3.10. Existing compatible environments can be reused.
 
-- **Operating System**: Recommended Ubuntu 22.04 
-- **GPU**: Nvidia GPU  
-- **Driver Version**: Recommended version 550 or later  
+## Training environment
 
----
-
-## 1. Creating a Virtual Environment
-
-It is recommended to run training or deployment programs in a virtual environment. Conda is recommended for creating virtual environments. If Conda is already installed on your system, you can skip step 1.1.
-
-### 1.1 Download and Install MiniConda
-
-MiniConda is a lightweight distribution of Conda, suitable for creating and managing virtual environments. Use the following commands to download and install:
-
-```bash
-mkdir -p ~/miniconda3
-wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda3/miniconda.sh
-bash ~/miniconda3/miniconda.sh -b -u -p ~/miniconda3
-rm ~/miniconda3/miniconda.sh
-```
-
-After installation, initialize Conda:
-
-```bash
-~/miniconda3/bin/conda init --all
-source ~/.bashrc
-```
-
-### 1.2 Create a New Environment
-
-Use the following command to create a virtual environment:
+On the supported Ubuntu/NVIDIA setup, create and activate a Conda environment:
 
 ```bash
 conda create -n unitree_rl_mjlab python=3.11
-```
-
-### 1.3 Activate the Virtual Environment
-
-```bash
 conda activate unitree_rl_mjlab
 ```
 
----
-
-## 2. Installing
-
-### 2.1 Download the Project
-
-Clone the repository using Git:
+Use this checkout's `dev` branch for the G1 online workflow:
 
 ```bash
-git clone https://github.com/unitreerobotics/unitree_rl_mjlab.git
-```
-
-### 2.2 Install Dependencies
-
-```bash
-sudo apt install -y libyaml-cpp-dev libboost-all-dev libeigen3-dev libspdlog-dev libfmt-dev
-```
-
-All other dependencies are specified in the setup.py file.
-Navigate to the project root directory and install them with:
-
-```bash
+git clone --branch dev https://github.com/mmurooka/unitree_rl_mjlab.git
 cd unitree_rl_mjlab
-pip install -e .
+python -m pip install -e .
 ```
 
-## Summary
+`setup.py` pins mjlab, MuJoCo, mujoco-warp and Warp. See the
+[README](../README.md#1-train) for training/play commands.
 
-After completing the above steps, you are ready to run the related programs in the virtual environment. If you encounter any issues, refer to the official documentation of each component or check if the dependencies are installed correctly.
+## C++ simulator and G1 controller
 
+Install the build dependencies and the official
+[unitree_sdk2](https://github.com/unitreerobotics/unitree_sdk2) / CycloneDDS
+installation used by your machine:
+
+```bash
+sudo apt install build-essential cmake libyaml-cpp-dev libboost-all-dev \
+  libeigen3-dev libspdlog-dev libfmt-dev libzmq3-dev libglfw3-dev
+```
+
+From this repository root, with ROS Humble installed:
+
+```bash
+source /opt/ros/humble/setup.bash
+cmake -S simulate -B simulate/build
+cmake --build simulate/build -j2
+cmake -S deploy/robots/g1 -B deploy/robots/g1/build \
+  -DG1_NAVIGATION_WITH_ROS2=ON
+cmake --build deploy/robots/g1/build -j2
+```
+
+Check the simulator configure output for ROS sensor support. Camera recognition
+needs those image/CameraInfo publishers even in GLIM-free mode. GLIM requires a
+ROS-enabled controller; `G1_NAVIGATION_WITH_ROS2=OFF` is only appropriate when
+that controller will use simulator localization. This flag does not configure
+simulator sensor publishing or other ROS processes.
+
+## Runtime Python and sensors
+
+For the shared sender, recognition and viewer environment, follow
+[TaskPromptRL's online setup](https://github.com/isri-aist/TaskPromptRL/blob/main/doc/online_motion_prompt_quickstart.md).
+Recognition needs NumPy, PyYAML, OpenCV with ArUco, ROS Python and the official
+[unitree_sdk2_python](https://github.com/unitreerobotics/unitree_sdk2_python).
+If your CycloneDDS installation is under `/usr/local`, its build/runtime lookup
+may require:
+
+```bash
+export CYCLONEDDS_HOME=/usr/local
+export CMAKE_PREFIX_PATH=/usr/local:${CMAKE_PREFIX_PATH}
+export LD_LIBRARY_PATH=/usr/local/lib:${LD_LIBRARY_PATH}
+```
+
+GLIM and the real Livox driver are external installations. The repository reads
+an explicitly supplied GLIM configuration; it does not install or start GLIM.
+Continue with the [individual startup workflow](sim_real_workflow.md).

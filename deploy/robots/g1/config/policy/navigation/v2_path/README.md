@@ -1,33 +1,17 @@
-# Trajectory Navigation policy with corrected arm control
+# G1 trajectory Navigation policy
 
-This configuration is for a Navigation policy retrained after the arm-up
-tracking fix. Copy that 120-dimensional ONNX file to:
+Use this 120-input policy with the `params/deploy.yaml` in this directory.
+Observation semantics, joint order and action scales must match training; input
+width alone does not establish compatibility. The active controller selects
+this directory in `config/config.yaml`.
 
-```text
-v2_path/exported/policy.onnx
-```
-
-The wrist-pitch action scale in this directory includes the arm-up tracking
-fix. Do not replace its ONNX file with a policy trained using the old scale.
-
-In simulation, `send_navigation_goal.py` selects a `frame_name` from
-`/frame_pose_list` and takes an `offset` in metres. It places the goal on the
-selected frame's local +x axis, `offset` metres before it, with the goal yaw
-matching the frame yaw. A goal sent from Velocity or a finished/holding OnlineMimic
-automatically enters Navigation. A goal sent while Navigation is active
-restarts the trajectory from the current pose. The arm
-command is initialized from the measured arm angles immediately before entry,
-so a lifted pose is retained without distinguishing pickup/place iterations.
-
-The generated target path is written to `log/navigation_target_path.csv` and
-the measured robot path to `log/navigation_pose.csv`.
-Running `scripts/plot_deploy_navigation.py` also opens a per-joint arm tracking
-window that overlays the selected target and encoder measurement and reports
-the latest RMS and maximum absolute errors.
+See the repository [startup workflow](../../../../../../../doc/sim_real_workflow.md),
+[goal protocol](../../../../../../../doc/navigation_goals.md) and
+[telemetry](../../../../../../../doc/navigation_telemetry.md) for runtime use.
 
 Arm controls in Navigation are:
 
-- `L1 + Up`: the basic raised pose used previously
+- `L1 + Up`: the configured basic raised pose
 - `L1 + Down`: the lowered pose
 - `L1 + Right`: the next randomly shuffled pose from `arm_pose_eval.npz`
 

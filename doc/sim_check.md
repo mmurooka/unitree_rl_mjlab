@@ -1,6 +1,6 @@
 # Reusable manual simulation checks
 
-Use `scripts/sim_check.py` to preserve the previous step-by-step workflow in Git.
+Use `scripts/sim_check.py` for repeatable, isolated step-by-step simulation runs.
 This helper is loopback-only and does not launch GLIM. It prepares a **new empty**
 run directory containing exact binary copies, configuration snapshots, separate
 IPC endpoints, logs and a manifest of the selected source and allowed truth use.

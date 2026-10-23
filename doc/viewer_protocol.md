@@ -1,6 +1,11 @@
 # Read-only controller visualization snapshots
 
-Both existing local ZMQ REP endpoints accept `VIEW` and return JSON (`schema: 1`).
+The Viser Python client requests these snapshots from g1_ctrl. All communication
+here is ZMQ request/reply: `VIEW` is polled repeatedly (a topic-like role), while
+`PLAN` and `METADATA` are on-demand services. There is no periodic publication
+or ROS service implementation on these endpoints.
+
+Both local ZMQ REP endpoints accept `VIEW` and return JSON (`schema: 1`).
 This command never starts/queues motion, changes modes, or changes progress.
 It is available independently of whether the controller accepts motion requests.
 The viewer polls at a bounded rate; it uses no motor-command publisher.
@@ -46,6 +51,11 @@ unequal latency. Real hardware capture synchronization is still approximate.
 
 `PLAN x y yaw` on the Navigation endpoint returns a passive root_yaw reference
 curve (51 samples, schema 1, `poses`, `tangent_scale`). It uses the same configured
-Bezier geometry as actual Navigation, without changing mode, progress, or goal
+Bezier geometry as actual Navigation via the single C++
+`g1::navigation_curve_point` function, without changing mode, progress, or goal
 queues. It has no time parameterization and is not a collision/physics prediction.
 `VIEW.path` remains the actual time-parameterized path adopted after execution.
+
+`PLAN` is requested by Viser, not by `send_navigation_goal.py`. `VIEW` reads
+already-generated trajectory samples without recomputing the path. The viewer
+receives marker observations separately from ROS `/frame_pose_list`.

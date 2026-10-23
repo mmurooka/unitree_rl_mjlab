@@ -27,19 +27,5 @@ length one; incompatible configurations are rejected.
 Preserve the effective configuration and ONNX hash with the run. Standard
 admission and actual physical playback remain the authority on execution.
 
-## Correction and validation (2026-10-23)
-
-OnlineMimic now initializes `last_action` from the actual preceding processed
-command, converted through the candidate policy's inverse affine action mapping.
-Measured angles are not used for this history. Resetting to zero incorrectly told
-the policy that its nominal-offset command preceded the new task. Admission still
-checks the resulting first output against the actual preceding command with the
-unchanged 20-degree threshold, and reuses that checked output on acceptance.
-
-A recorded rejected put reproduced exactly offline: zero history gave 24.14 degrees,
-while previous-command history gave 9.37 degrees. Full image-based transport then
-completed with simulator localization (lift 8.04 / put 11.92 degrees) and external
-GLIM (7.97 / 17.03 degrees). The GLIM put observation with zero history would give
-31.13 degrees. Both runs placed the box stably on the destination table in offline
-evaluation; no threshold relaxation, automatic retries or new training were used.
-These are finite simulated trials, not a real-hardware or reliability guarantee.
+See [command continuity](mimic_start_continuity.md) for runtime initialization and
+[validation results](validation_results.md) for recorded simulation evidence.

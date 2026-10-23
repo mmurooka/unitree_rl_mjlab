@@ -16,7 +16,8 @@ cmake --build build -j
 ./build/unitree_mujoco
 ```
 
-Runtime settings, including sensor rates and topic names, are in `config.yaml`.
+Run these simulator commands from `simulate/`. Runtime settings, including
+sensor rates and topic names, are in `config.yaml`.
 Override these settings with `--disable-lidar` to disable MID-360 lidar and IMU,
 or `--disable-camera` to disable D435 images and point clouds. Use both to
 disable both sensor simulations:
@@ -30,7 +31,6 @@ disable both sensor simulations:
 GLIM runs externally, with the same configuration as real hardware. See
 [the sim/real workflow](../doc/sim_real_workflow.md) for individual startup
 commands, including the required Velocity-before-hang-release ordering.
-There is no sim-only GLIM configuration or combined GLIM launcher.
 `--glim-config /absolute/path` reads the external sensor settings to match
 simulated IMU placement and topic/frame names. It never starts or modifies GLIM.
 Livox acceleration is published in g in both environments.
@@ -78,9 +78,9 @@ For reference generation, use `task_prompt.box.size=[0.26,0.35,0.19]`;
 Positions and geometry dimensions can be edited directly in the scene XML;
 MuJoCo box `size` values are half dimensions.
 
-This defines the physical environment; successful lifting and transport with
-the current policy have not been validated. Matching grip width alone does
-not guarantee sufficient hand contact or grip force.
+Image-based transport has completed in bounded GLIM and GLIM-free simulation
+checks; see [validation results](../doc/validation_results.md). Matching grip
+width alone does not establish reliable contact or sufficient grip force.
 
 ## ROS 2 interfaces
 
@@ -104,7 +104,8 @@ The D435 simulation publishes RealSense-compatible interfaces under
 - `depth/color/points`
 - RealSense-internal transforms below `camera_link` on `/tf_static`
 
-Color is `rgb8`. Depth is idealized `16UC1` in millimeters, with zero for an
+The default image size is 640×480. CameraInfo is derived from the MuJoCo
+camera model, independently of the real camera calibration YAML. Color is `rgb8`. Depth is idealized `16UC1` in millimeters, with zero for an
 invalid measurement. The simulated camera has no lens distortion or noise.
 `pointcloud_downsample` applies a pixel stride to point-cloud generation while
 leaving the RGB and depth images at their configured resolution.
@@ -119,8 +120,8 @@ ros2 launch $(pwd)/launch/g1_sensor_mounts.launch.py
 ```
 
 This publishes `torso_link -> livox_frame` and
-`torso_link -> camera_link`. A complete robot application should eventually
-provide these transforms from its URDF and `robot_state_publisher`.
+`torso_link -> camera_link`. Use a URDF publisher if a full robot TF tree is needed. The TaskPromptRL Viser
+viewer uses model kinematics directly and needs no drawing TF.
 
 Use Best Effort reliability for the image and point-cloud displays in RViz.
 Start the sensor mounting transforms and the shared MID-360/D435 RViz

@@ -28,7 +28,7 @@ python aruco/frame_pose_publisher.py --environment real --network <robot-interfa
 ```
 
 `--domain-id` selects Unitree DDS (default 0); it is separate from ROS_DOMAIN_ID.
-`--glim` is accepted for compatibility but no longer selects a recognition path.
+`--glim` is a compatibility alias with no effect on recognition.
 The camera topics and marker map are in `simulate/config.yaml`; the same map is
 used for both environments. Toggle `frame_pose_list.aruco.display` for preview.
 Press `q` to close only the preview. Regenerate marker textures using
@@ -54,8 +54,7 @@ that stamp, not the robot at a later goal start time.
 
 The simulator's `/evaluation/frame_pose_list` is evaluation-only object truth.
 It must never be consumed for navigation goals or target search, even in the
-GLIM-free localization mode. The simulator no longer publishes a world-derived
-camera TF. Setting `frame_pose_list.source: ground_truth` is rejected.
+GLIM-free localization mode. The simulator publishes no world-derived camera TF. Setting `frame_pose_list.source: ground_truth` is rejected.
 
 `object_to_marker` specifies marker pose in the object frame; its inverse turns
 the observed marker pose into an object pose. Marker size is the black square's

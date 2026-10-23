@@ -1,76 +1,26 @@
-# 安装配置文档
+# 安装与G1部署
 
-## 系统要求
+训练与ROS部署请使用独立的Python环境：训练示例使用Python 3.11，
+ROS Humble的Python接口使用Python 3.10。可以复用已有的兼容环境。
 
-- **操作系统**：推荐使用 Ubuntu 22.04
-- **显卡**：Nvidia 显卡  
-- **驱动版本**：建议使用 550 或更高版本  
-
----
-
-## 1. 创建虚拟环境
-
-建议在虚拟环境中运行训练或部署程序，推荐使用 Conda 创建虚拟环境。如果您的系统中已经安装了 Conda，可以跳过步骤 1.1。
-
-### 1.1 下载并安装 MiniConda
-
-MiniConda 是 Conda 的轻量级发行版，适用于创建和管理虚拟环境。使用以下命令下载并安装：
-
-```bash
-mkdir -p ~/miniconda3
-wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda3/miniconda.sh
-bash ~/miniconda3/miniconda.sh -b -u -p ~/miniconda3
-rm ~/miniconda3/miniconda.sh
-```
-
-安装完成后，初始化 Conda：
-
-```bash
-~/miniconda3/bin/conda init --all
-source ~/.bashrc
-```
-
-### 1.2 创建新环境
-
-使用以下命令创建虚拟环境：
+## 训练
 
 ```bash
 conda create -n unitree_rl_mjlab python=3.11
-```
-
-### 1.3 激活虚拟环境
-
-```bash
 conda activate unitree_rl_mjlab
-```
-
----
-
-## 2. 安装
-
-### 2.1 下载
-
-通过 Git 克隆仓库：
-
-```bash
-git clone https://github.com/unitreerobotics/unitree_rl_mjlab.git
-```
-
-### 2.2 安装依赖
-
-```bash
-sudo apt install -y libyaml-cpp-dev libboost-all-dev libeigen3-dev libspdlog-dev libfmt-dev
-```
-
-我们将其余所需依赖放入 setup.py 文件中，
-进入 unitree_rl_mjlab 项目根目录并安装：
-
-```bash
+git clone --branch dev https://github.com/mmurooka/unitree_rl_mjlab.git
 cd unitree_rl_mjlab
-pip install -e .
+python -m pip install -e .
 ```
 
-## 总结
+依赖版本由 `setup.py` 指定。训练和回放命令见 [README](../README.md)。
 
-按照上述步骤完成后，您已经准备好在虚拟环境中运行相关程序。若遇到问题，请参考各组件的官方文档或检查依赖安装是否正确。
+## 仿真与部署
 
+C++依赖、Unitree SDK、ROS构建选项及共享Python环境见
+[安装与构建指南](setup_en.md)。按该指南从仓库根目录构建
+`simulate/build/unitree_mujoco` 与 `deploy/robots/g1/build/g1_ctrl`。
+
+逐个终端启动、Xbox操作、GLIM及无GLIM模式见
+[sim/real启动流程](sim_real_workflow.md)。先进入Velocity并确认生效，再解除仿真悬挂。
+GLIM使用外部安装与配置；定位源必须明确选择，实机不能选择模拟器真值。

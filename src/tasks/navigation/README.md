@@ -49,8 +49,7 @@ index offsetをその基準indexへ加えて取得します。終端を超える
 標準偏差 `0.01 m`、残り1%は機器誤作動として標準偏差 `1.0 m` とします。
 yawには位置ノイズを加えません。playでは遅延のみ無効化し、位置ノイズは維持します。
 
-Actor観測は、従来のマーカー6要素を軌道8要素へ置き換えたため、腕目標14要素を
-含めて120次元です。
+Actor観測は、経路姿勢8要素と腕目標14要素を含めて120次元です。
 
 ## 指令と報酬
 
@@ -88,7 +87,7 @@ velocityタスク由来の速度追従、姿勢、周期、足上げ、滑り、
 荷物を体の前で保持する想定の腕上げ姿勢を、次のコマンドで再生成できます。
 
 ```bash
-tmp/bin/python scripts/generate_g1_arm_carry_poses.py \
+python scripts/generate_g1_arm_carry_poses.py \
   --num-raised-poses 32 --seed 42
 ```
 
@@ -107,16 +106,16 @@ tmp/bin/python scripts/generate_g1_arm_carry_poses.py \
 姿勢一覧はGUIなしでも確認できます。
 
 ```bash
-tmp/bin/python scripts/view_g1_arm_pose_library.py --list
+python scripts/view_g1_arm_pose_library.py --list
 ```
 
 MuJoCo viewerでは全姿勢が2秒ごとに切り替わります。特定の姿勢を固定表示する場合は
 `--pose-index`を指定します。
 
 ```bash
-tmp/bin/python scripts/view_g1_arm_pose_library.py
+python scripts/view_g1_arm_pose_library.py
 # seed 42の既定ライブラリでは、index 4が最初の非対称姿勢
-tmp/bin/python scripts/view_g1_arm_pose_library.py --pose-index 4
+python scripts/view_g1_arm_pose_library.py --pose-index 4
 ```
 
 ## 実行
@@ -130,25 +129,23 @@ python scripts/train.py Unitree-G1-Navigation-Flat \
 
 ```bash
 python scripts/play.py Unitree-G1-Navigation-Flat \
-  --checkpoint_file=logs/rsl_rl/g1_navigation/<run>/model_<iteration>.pt
+  --checkpoint-file=logs/rsl_rl/g1_navigation/<run>/model_<iteration>.pt
 ```
 
-入力が118次元から120次元へ変わったため、既存のnavigationチェックポイントは
-読み込めません。新規にtrainしてください。
-また、最近点基準への変更前に学習した120次元モデルは形状上は読み込めますが、
-観測と速度指令の意味が異なるため再学習が必要です。
-腕姿勢ライブラリ導入前の120次元モデルも形状は変わりませんが、新しい腕目標群を
-学習していないため再学習してください。
-
-deploy用の修正済120次元設定は `navigation/v2_path` にあります。
-修正後に新規trainしたONNXだけを使用してください。
+deployは `navigation/v2_path` の120次元観測と対応するaction scaleを使用します。
+入力次元だけで互換性を判断せず、最近点基準の経路観測・腕目標群・関節順序・
+action scale/offsetが学習設定と一致するONNXとdeploy.yamlを一緒に使用してください。
+チェックポイントを入れ替える場合:
 
 ```bash
 mkdir -p deploy/robots/g1/config/policy/navigation/v2_path/exported
 cp logs/rsl_rl/g1_navigation/<run>/policy.onnx deploy/robots/g1/config/policy/navigation/v2_path/exported/policy.onnx
 ```
 
-Navigationへ入るたびにランダム経路を1本生成し、その終端をゴールとして保持します。
+学習時はランダム軌道を生成します。deploy時は外部から指定された相対ゴールに
+向かう経路を生成し、その終端を保持します。起動は
+[sim/real手順](../../../doc/sim_real_workflow.md)、指令は
+[Navigationプロトコル](../../../doc/navigation_goals.md)を参照してください。
 実軌跡は `navigation_pose.csv`、全目標経路は `navigation_target_path.csv` に出力され、
 `scripts/plot_deploy_navigation.py`で重ねて確認できます。
 同じスクリプトで腕14関節の目標角とencoder実測角を重ねたウィンドウも開き、

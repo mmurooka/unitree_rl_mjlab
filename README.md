@@ -1,40 +1,43 @@
 # Unitree RL Mjlab
 
+MuJoCo-based reinforcement learning and deployment for Unitree robots, built on
+[mjlab](https://github.com/mujocolab/mjlab). This checkout includes G1 Velocity,
+Navigation and OnlineMimic control, simulated camera/LiDAR sensors, and the
+controller interfaces used by [TaskPromptRL](https://github.com/isri-aist/TaskPromptRL).
 
-## ✳️ Overview
-Unitree RL Mjlab is a reinforcement learning project built upon the
-[mjlab](https://github.com/mujocolab/mjlab.git), using MuJoCo as its
-physics simulation backend, currently supporting Unitree Go2, A2, As2, G1, R1, H1_2 and H2.
+## Documentation
 
-Mjlab combines [Isaac Lab](https://github.com/isaac-sim/IsaacLab)'s proven API
-with best-in-class [MuJoCo](https://github.com/google-deepmind/mujoco_warp)
-physics to provide lightweight, modular abstractions for RL robotics research
-and sim-to-real deployment.
+| Task | Guide |
+|---|---|
+| Install training dependencies and build G1 deploy | [Setup](doc/setup_en.md) · [中文](doc/setup_zh.md) |
+| Start sim/real components individually with a gamepad | [Sim/real workflow](doc/sim_real_workflow.md) |
+| Configure scenes and simulated sensors | [Simulator](simulate/README.md) |
+| Recognize markers and calibrate the real camera | [ArUco](aruco/README.md) · [Camera calibration](doc/camera_calibration_audit.md) |
+| Understand root frames and timestamps | [Sensor frames](doc/sensor_frames.md) |
+| Send goals and interpret arrival | [Navigation protocol](doc/navigation_goals.md) |
+| Inspect controller paths, commands and measured posture | [Telemetry](doc/navigation_telemetry.md) · [Viewer protocol](doc/viewer_protocol.md) |
+| Understand Mimic admission and reproduce a rejection | [Command continuity](doc/mimic_start_continuity.md) · [Offline replay](doc/mimic_admission_audit.md) |
+| Run repeatable isolated simulations | [Simulation checks](doc/sim_check.md) · [Validation results](doc/validation_results.md) |
+| Compare balance objectives | [Velocity / Mimic audit](doc/policy_balance_audit.md) |
 
-<div align="center">
+## G1 box transport
 
-| <div align="center">  MuJoCo </div>                                                                                                                                           | <div align="center"> Physical </div>                                                                                                                                               |
-|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| <div style="width:250px; height:150px; overflow:hidden;"><img src="doc/gif/g1-velocity.gif" style="width:100%; height:100%; object-fit:cover; object-position:center;"></div> | <div style="width:250px; height:150px; overflow:hidden;"><img src="doc/gif/g1-velocity-real.gif" style="width:100%; height:100%; object-fit:cover; object-position:center;"></div> |
+TaskPromptRL generates reference motions and converts them in the sending Python
+process using this repository's converter. `g1_ctrl` runs the policies and sends
+motor commands. The simulator or real sensor drivers provide observations;
+GLIM runs as a separate external program using the same configuration in sim/real.
 
-</div>
+Select localization explicitly: `glim` in sim or real, or `simulator` for
+GLIM-free sim using robot-position truth. Marker recognition uses images,
+measured joints and pelvis IMU with model kinematics, independent of GLIM/TF.
+Evaluation object truth is not a runtime navigation input.
 
-
-## 📦 Installation and Configuration
-
-Please refer to [setup.md](doc/setup_en.md) for installation and configuration steps.
-
-
-## 🔁 Process Overview
-
-The basic workflow for using reinforcement learning to achieve motion control is:
-
-`Train` → `Play` → `Sim2Real`
-
-- **Train**: The agent interacts with the MuJoCo simulation and optimizes policies through reward maximization.
-- **Play**: Replay trained policies to verify expected behavior.
-- **Sim2Real**: Deploy trained policies to physical Unitree robots for real-world execution.
-
+Start with the [individual startup workflow](doc/sim_real_workflow.md).
+For sending motions, sequencing transport, and Viser preview/live/replay, use
+[TaskPromptRL's documentation](https://github.com/isri-aist/TaskPromptRL#documentation).
+Enter Velocity **before** releasing simulated hang. The supplied G1 configuration
+selects `velocity/v0`, `navigation/v2_path` and `mimic/v1_lift_walk_put`; keep each
+ONNX artifact paired with its own `params/deploy.yaml`.
 
 ## 1. Train
 
@@ -138,7 +141,7 @@ To visualize policy behavior in MuJoCo:
 
 Velocity tracking:
 ```bash
-python scripts/play.py Unitree-G1-Flat --checkpoint_file=logs/rsl_rl/g1_velocity/2026-xx-xx_xx-xx-xx/model_xx.pt
+python scripts/play.py Unitree-G1-Flat --checkpoint-file=logs/rsl_rl/g1_velocity/2026-xx-xx_xx-xx-xx/model_xx.pt
 ```
 
 Motion imitation:
@@ -146,12 +149,11 @@ Motion imitation:
 ```bash
 python scripts/play.py Unitree-G1-Tracking-No-State-Estimation \
   --motion-file src/assets/motions/g1/lift_walk_put.npz \
-  --checkpoint-file logs/rsl_rl/g1_tracking/2026-09-16_23-43-59/model_16000.pt \
+  --checkpoint-file logs/rsl_rl/g1_tracking/<run>/model_<iteration>.pt \
   --num-envs 1 --viewer native
 ```
 
-This example uses the `lift_walk_put` motion and the selected training run's
-checkpoint. `--motion-file` expects a converted policy-input NPZ, not the raw
+Choose a checkpoint trained for the supplied reference format. `--motion-file` expects a converted policy-input NPZ, not the raw
 MotionPrompt NPZ. Use `--device cpu` when CUDA is unavailable, or `--viewer viser`
 for browser-based visualization on a machine without a desktop display.
 
@@ -165,280 +167,8 @@ for browser-based visualization on a machine without a desktop display.
 |----------------------------------|--------------------------------|------------------------------------|-----------------------------------|
 | ![go2](doc/gif/go2-velocity.gif) | ![g1](doc/gif/g1-velocity.gif) | ![h1_2](doc/gif/h1_2-velocity.gif) | ![g1_mimic](doc/gif/g1-mimic.gif) |
 
-## 3. Sim2Real
+## Acknowledgements
 
-Before deployment, install the required communication tools:
-
-- [cyclonedds](https://github.com/eclipse-cyclonedds/cyclonedds.git)
-- [unitree_sdk2](https://github.com/unitreerobotics/unitree_sdk2.git)
-
-<div style="margin-left: 20px;">
-
-### 3.1 Real Robot Setup
-
-#### 3.1.1 Power On the Robot
-
-Start the robot in suspended state and wait until it enters `zero-torque` mode.
-
-#### 3.1.2 Enable Debug Mode
-
-While in `zero-torque` mode, press `L2 + R2` on the controller. The robot will enter `debug mode` with joint damping enabled.
-
-#### 3.1.3 Connect to the Robot
-
-Connect your PC to the robot via Ethernet. Configure the network as:
-
-- Address：`192.168.123.222`
-- Netmask：`255.255.255.0`
-
-Use `ifconfig` to determine the Ethernet device name for deployment.
-
-### 3.2 Compilation
-
-Example: Unitree G1 velocity control.
-Place `policy.onnx` and `policy.onnx.data` into: `deploy/robots/g1/config/policy/velocity/v0/exported`.
-Then compile:
-
-```bash
-cd deploy/robots/g1
-mkdir build && cd build
-cmake .. && make
-```
-
-#### Navigation configuration and controls
-
-The G1 controller also includes navigation policies under
-`deploy/robots/g1/config/policy/navigation`. Controller mappings are:
-
-- `L2 + Up`: Passive to FixStand
-- `R2 + A`: FixStand/Navigation to Velocity
-- `L1 + Up/Down`: raise/lower the arms in arm-enabled Navigation
-- `L2 + B`: return to Passive
-
-Navigation is started externally with TaskPromptRL's
-`scripts/send_navigation_goal.py`. The script selects a `frame_name` from
-`/frame_pose_list` and generates a goal `offset` metres before its local
-+x-facing side, with the goal yaw matching the frame yaw. If the selected
-ArUco marker is initially outside the camera view, first send an explicit relative
-`--goal x y yaw --wait`, then send a fresh marker goal. Missing markers cause a
-timeout without commanding motion. Object truth is reserved for evaluation.
-Sending from
-Velocity or a finished/holding OnlineMimic automatically enters Navigation;
-sending during Navigation replaces the active goal. OnlineMimic reports `BUSY`
-until its motion has finished.
-Navigation captures the measured arm joint angles immediately before entry and
-uses them as its arm command, preserving a lifted posture without pickup/place
-iteration state.
-
-On the real robot, the controller subscribes to `/glim_ros/odom`
-(`nav_msgs/msg/Odometry`) and converts it to the pelvis pose before computing displacement, instead of
-integrating the issued velocity command. It waits with a zero navigation
-command when the selected localization source is unavailable, and stops when
-updates exceed `odometry_timeout` (0.5 s by default). Localization sources,
-topics, and timeouts are configured in the selected Navigation policy's
-`params/deploy.yaml`.
-
-The current trajectory actor has 120 inputs, including the 14-joint arm target
-and future path observations.
-
-Select `--navigation-localization-source glim|simulator` explicitly. There is
-no auto selection or truth fallback. Use `--environment sim` for simulation;
-`real + simulator` is rejected. GLIM poses are converted from the sensor IMU
-into the pelvis frame using the full model mount and timestamped measured
-waist angles. ArUco uses measured kinematics independently of GLIM.
-
-GLIM runs externally with the same configuration in sim and real. Pass the
-same directory as `--glim-config` to the controller and simulator. Follow the
-[individual startup commands](doc/sim_real_workflow.md), including Velocity
-before releasing the hang. Sim-only GLIM settings and its combined launcher
-have been removed. Build from a shell with the ROS environment sourced.
-
-### 3.3 Simulation Deployment
-
-Before deploying on the real robot, it is recommended to perform simulation deployment using [unitree_mujoco](https://github.com/unitreerobotics/unitree_mujoco)
-to prevent abnormal behaviors on the physical robot. This framework has already integrated it.
-
-Build unitree_mujoco：
-
-```bash
-cd simulate
-mkdir build && cd build
-cmake .. && make -j8
-```
-
-Build the G1 controller in `build` (shared by simulation and real-robot use):
-
-```bash
-source /opt/ros/humble/setup.bash
-cmake -S deploy/robots/g1 -B deploy/robots/g1/build \
-  -DG1_NAVIGATION_WITH_ROS2=ON
-cmake --build deploy/robots/g1/build -j8
-```
-
-Launch the simulator (note that a gamepad must be connected):
-
-```bash
-./simulate/build/unitree_mujoco
-```
-
-You can select the corresponding robot in `simulate/config`
-
-Launch the simulation control program:
-
-```bash
-cd deploy/robots/g1/build
-./g1_ctrl --network=lo
-```
-
-#### Online MotionPrompt playback
-
-This repository runs the simulator, motion converter, and G1 controller;
-TaskPromptRL sends the motions. Follow the
-[online quickstart](https://github.com/isri-aist/TaskPromptRL/blob/main/doc/online_motion_prompt_quickstart.md)
-for setup, terminal commands, controls, and shutdown.
-
-#### Navigation
-
-##### Navigation in simulation
-
-Run the following commands from the repository root.
-
-ROS 2 is required when Navigation consumes GLIM odometry, including in
-simulation. If Navigation only uses simulator truth localization, you can
-configure the same `build` directory with `-DG1_NAVIGATION_WITH_ROS2=OFF` and
-rebuild to remove the controller's ROS 2 runtime dependency. RViz still requires
-ROS independently of this controller option.
-
-Install a newly trained 120-input trajectory policy before testing deploy:
-
-Policies trained before the closest-path-point reference change have the same
-input width but different observation semantics and must be retrained.
-
-```bash
-mkdir -p deploy/robots/g1/config/policy/navigation/v2_path/exported
-cp logs/rsl_rl/g1_navigation/<run>/policy.onnx deploy/robots/g1/config/policy/navigation/v2_path/exported/policy.onnx
-```
-
-`v2_path` uses the corrected Navigation wrist-pitch action scale. Do not
-replace its ONNX file with a policy trained using the old scale.
-
-From the TaskPromptRL repository, select a simulated frame after the simulator
-and controller are running:
-
-```bash
-source /opt/ros/jazzy/setup.bash
-source venv-tprl/bin/activate
-python scripts/send_navigation_goal.py --frame-name carry_box --offset 0.7
-```
-
-For a known viewpoint, move to a relative goal and wait for arrival before
-requesting the next observed marker:
-
-```bash
-python scripts/send_navigation_goal.py --goal -0.15 0 2.094395 --wait
-python scripts/send_navigation_goal.py --frame-name place_table --offset 0.3 --wait
-```
-
-The first goal is a final pose (15 cm behind, 120 degrees left) in the frozen
-start-root frame, not an ordered list of motions. To require backing up before
-turning, send `--goal -0.15 0 0 --wait`, then `--goal 0 0 2.094395 --wait`.
-`--wait` uses the controller's goal-specific position/yaw arrival result.
-A timeout does not cancel or resend the goal. `--search-yaw` and implicit marker
-search are removed. See [goal protocol](doc/navigation_goals.md).
-The ArUco publisher shows the annotated robot camera when
-`frame_pose_list.aruco.display` is true.
-
-`/frame_pose_list` uses `std_msgs/msg/String` with a JSON payload. Each element
-has `frame_name` and
-`rel_pose=[x,y,z,qx,qy,qz,qw]`. Only currently detected, configured ArUco
-frames are included; simulation object truth is on a separate evaluation topic.
-No separate approach-direction metadata is used: the selected frame's yaw
-defines its front. The controller path is anchored to the localization pose
-captured when the goal starts. At each policy step,
-the closest sampled path point becomes the reference. The one- and two-second
-lookaheads are index offsets computed from `reference_times / step_dt`; offsets
-beyond the path remain at the terminal goal.
-
-##### Live Navigation pose plot (sim2sim and real robot)
-
-From the repository root, start the plotter before or after entering Navigation:
-
-```bash
-python3 scripts/plot_deploy_navigation.py
-```
-
-Each Navigation entry truncates and then streams
-`deploy/robots/g1/log/navigation_pose.csv` at the policy rate. The CSV contains
-the closest sampled path point's relative pose and cumulative path progress,
-velocity commands, raw policy actions, commanded arm pose targets, encoder
-joints, joint targets actually written to LowCmd,
-projected gravity, and the localization position/quaternion. The
-`slam_pose_*` columns contain GLIM odometry on the real robot and MuJoCo truth
-in sim2sim; use the `source` column (`glim` or `simulator`) to distinguish them.
-Quaternion columns are ordered `qx,qy,qz,qw`. `command_joint_15` through
-`command_joint_28` are the 14 arm-pose target angles. They start from the
-measured pose captured immediately before Navigation and can then be changed
-with the deploy `L1` controls. They are intentionally not the policy's processed
-full-body output. `action_joint_*` is the last exact `q` value written to the
-mapped LowCmd motor entry. Encoder/action columns remain available for all 29
-joints. Unavailable data is written as `nan` without stopping the other
-telemetry.
-
-The complete sampled reference is written separately to
-`deploy/robots/g1/log/navigation_target_path.csv` as soon as localization is
-available. This includes the whole future path rather than only reference
-points near the robot's current progress.
-
-The plotter opens a pose window and a joint window. The pose window shows the
-relative error to the closest sampled path point, plots `closest_progress_m`
-over time, and overlays the measured robot trajectory with the dashed green
-target path and final goal. In the joint window,
-`command_joints` shows the
-14 commanded arm joints, while `encoder_joints` and `action_joints` show all 29
-G1 joints. To filter the encoder/action plots, pass joint indices; the command
-plot then shows only arm joints contained in that selection. For example:
-
-```bash
-python3 scripts/plot_deploy_navigation.py --joints 15 18 22 25
-```
-
-The title reports whether the data source is `simulator` or `glim`; missing or
-stale localization is shown explicitly. This file-based interface is identical
-for both simulator and GLIM localization, and keeps GUI
-work outside the control process.
-
-The log paths, enable flag, and flush interval can be changed with
-`pose_log_path`, `target_path_log_path`, `pose_log_enabled`, and
-`pose_log_flush_interval` in the Navigation `deploy.yaml`. If required, install plotting dependencies with
-`python3 -m pip install matplotlib numpy`.
-
-### 3.4 Real-Robot Deployment
-
-Launch the control program on the real robot:
-
-```bash
-cd deploy/robots/g1/build
-./g1_ctrl --network=enp5s0
-```
-
-The real-robot GLIM build requires `G1_NAVIGATION_WITH_ROS2=ON` (the default).
-Source the matching ROS 2 environment before configuring, building, and
-running it, for example `source /opt/ros/jazzy/setup.bash`.
-
-**Arguments**：
-
-- `network`: The network interface used to connect to the robot. Use `lo` for simulation deployment, and `enp5s0` for the real robot(You can check it using the `ifconfig` command)
-
-</div>
-
-**Deployment Results**：
-
-| Go2                                                    | G1                                                    | H1_2           | G1_mimic                                           |
-|--------------------------------------------------------|-------------------------------------------------------|----------------|----------------------------------------------------|
-| <img src="doc/gif/go2-velocity-real.gif" width="300"/> | <img src="doc/gif/g1-velocity-real.gif" width="300"/> | <img src="doc/gif/h1_2-velocity-real.gif" width="300"/> | <img src="doc/gif/g1-mimic-real.gif" width="300"/> |
-
-
-## 🎉  Acknowledgements
 
 This project would not be possible without the contributions of the following repositories:
 

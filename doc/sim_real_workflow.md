@@ -1,108 +1,210 @@
-# Sim/real sensor and navigation workflow
+# Individual G1 startup: simulation and real hardware
 
-GLIM is an external program. Use the same installed GLIM version and the same
-complete configuration directory in sim and real. The controller and simulator
-read that directory to identify the IMU frame and its LiDAR extrinsic; neither
-starts GLIM, copies its settings, nor writes its files. `SLAM/GLIM_config` is only
-a ROS-settings reference, not a complete installation or the active config path.
+This is the main startup procedure for Xbox-operated simulation and separate
+sensor/controller terminals. Build/install first using [setup](setup_en.md) and
+[TaskPromptRL online setup](https://github.com/isri-aist/TaskPromptRL/blob/main/doc/online_motion_prompt_quickstart.md).
+For isolated per-run binaries, domains and recordings, use [sim_check](sim_check.md)
+instead. Neither workflow starts GLIM for you.
 
-The commands below run from this repository, except the explicitly indicated
-TaskPromptRL command. Source the installed ROS environment in every ROS terminal
-(e.g. `/opt/ros/humble/setup.bash`). Use a ROS-compatible Python environment with
-OpenCV ArUco, NumPy, PyYAML and the official Unitree SDK2 Python for recognition.
-Use the existing motion-conversion Python environment for `run_online_deploy.py`.
-For reusable per-run snapshots and joystick/recording helpers, see [sim checks](sim_check.md).
+| Mode | Sensor processes | Localization | Startup section |
+|---|---|---|---|
+| Sim with GLIM | MuJoCo camera/LiDAR + ArUco | External GLIM | [Sim with GLIM](#sim2sim-with-glim) |
+| Sim without GLIM | MuJoCo camera + ArUco | Explicit simulator robot truth | [GLIM-free sim](#glim-free-sim2sim) |
+| Real | Real camera + Livox driver + ArUco | External GLIM | [Real hardware](#real-hardware) |
 
-## GLIM sim2sim
+## What can be grouped
 
-Set the external path consistently in each terminal:
+There is no single command that starts the entire sensor/GLIM/controller/viewer
+stack. The following tools group only the indicated work:
+
+| Tool | Scope |
+|---|---|
+| `run_online_deploy.py` | Starts g1_ctrl and manages its shutdown. Optional `--with-motion-worker` also starts the compatibility worker. |
+| `sim_check.py prepare`, then separate `run` commands | Prepares isolated sim configuration, binaries, endpoints and logs; simulator/controller/ArUco are still started in separate terminals. GLIM is external. |
+| TaskPromptRL `run_transport.py --execute` | Executes the whole reviewed task after startup; it does not launch the sensor/control stack. |
+| TaskPromptRL `command.sh` | Runs individual task commands with terminal pauses after startup. |
+
+For sim, prefer the numbered manual procedure below when operating the physical
+Xbox. Use [sim_check](sim_check.md) for repeatable scripted button/recording checks.
+For real, start sensors and controller separately; the task sequencer can then
+run a plan adapted to the real layout.
+
+## Common terminal setup
+
+Examples use ROS Humble, sibling repositories under `~/src` and the shared Python
+3.10 environment. Run this setup in each terminal, adjusting the external GLIM
+path to the **same complete configuration directory used on real hardware**:
 
 ```bash
-export G1_GLIM_CONFIG=/absolute/path/to/your/external/glim/config
+source /opt/ros/humble/setup.bash
+source ~/src/TaskPromptRL/.venv-online-ros/bin/activate
+export ROS_DOMAIN_ID=0
+export G1_GLIM_CONFIG="$HOME/src/glim/config"
+cd ~/src/unitree_rl_mjlab
 ```
 
-1. Start the simulator (its ROS sensor outputs begin, but no GLIM process starts):
+The simulator/controller read that directory to match sensor frames and extrinsics;
+they do not write it. `SLAM/GLIM_config` is a ROS-settings reference, not the active
+complete GLIM installation. Unitree DDS `--domain-id` defaults to 0; keep it equal
+on simulator, controller and recognition. ROS_DOMAIN_ID is independent and must
+match all ROS sensor consumers and GLIM. Run only one controller for these endpoints.
+
+## Sim2sim with GLIM
+
+Check `simulate/config.yaml`: `use_joystick: 1`, `joystick_type: xbox`, and the
+actual `joystick_device` (default `/dev/input/js0`). Connect the Xbox gamepad.
+Each numbered command below runs in its own terminal after the common setup.
+
+### 1. Simulator
 
 ```bash
 simulate/build/unitree_mujoco --network lo --glim-config "$G1_GLIM_CONFIG" \
   --scene src/assets/robots/unitree_g1/xmls/scene_g1_table_box_glim.xml
 ```
 
-2. Start deploy in another terminal:
+MuJoCo publishes the simulated camera, LiDAR and IMUs. Do not start the real camera
+bridge in sim. Room walls are hidden in the MuJoCo viewer by default; sensor rays
+and collisions still include them. See [simulator settings](../simulate/README.md).
+
+### 2. Controller and gamepad
 
 ```bash
 python scripts/run_online_deploy.py --network lo --environment sim \
   --navigation-localization-source glim --glim-config "$G1_GLIM_CONFIG"
 ```
 
-3. Enter FixStand, then **Velocity, confirm it is active, then release the hang**.
-   Wait for a stable stance. Do not release the hang before Velocity is active.
-4. Start external GLIM using its normal command in another terminal:
+The launcher starts only g1_ctrl by default. Motion conversion runs in TaskPromptRL.
+
+1. Press **LT + D-pad Up** to enter FixStand; wait for its posture transition.
+2. Press **RT + A** to enter Velocity; center the sticks.
+3. Confirm Velocity is active in the controller log, then focus the MuJoCo window
+   and press keyboard **9** to release hang. Wait for a stable stance.
+
+Always enter Velocity before releasing hang. `LT + B` enters Passive;
+`RT + A` returns Navigation/OnlineMimic to Velocity. Simulated Xbox input is
+translated into Unitree controller fields by MuJoCo.
+
+### 3. External GLIM
+
+Initialize GLIM from the stable robot:
 
 ```bash
 ros2 run glim_ros glim_rosnode --ros-args -p config_path:="$G1_GLIM_CONFIG"
 ```
 
-5. Start recognition independently:
+The inverted LiDAR mount and separate IMU offset follow the model and external
+`T_lidar_imu`. Raw Livox acceleration is in g; GLIM applies the configured scale.
+A fixed startup delay is not a readiness condition. After a simulation clock
+reset, restart GLIM and submit a new goal rather than continuing across epochs.
+
+### 4. Marker recognition
 
 ```bash
 python aruco/frame_pose_publisher.py --environment sim --network lo
 ```
 
-6. Once GLIM is initialized and the marker is visible, send a goal from TaskPromptRL:
+Recognition uses images, measured joints and pelvis IMU with model kinematics,
+independent of GLIM and TF. Wait for current localization and the target marker
+before issuing commands. See [frames and timestamp rules](sensor_frames.md).
+
+### 5. Optional Viser display
+
+From TaskPromptRL, use read-only viewing alongside individual commands:
 
 ```bash
-python scripts/send_navigation_goal.py --frame-name carry_box --offset 0.3
+cd ~/src/TaskPromptRL
+python scripts/view_robot.py --live --environment sim --read-only
 ```
 
-The inverted LiDAR mount is retained. Raw simulated Livox acceleration is in g,
-matching the real driver. `T_lidar_imu` from the external GLIM configuration places
-a separate simulated IMU site relative to the LiDAR; it is not approximated by
-changing yaw. The camera/body kinematics are shared with real recognition.
+Open `http://127.0.0.1:8080`. For browser preview followed by its execution button,
+omit `--read-only` and use the browser as the command owner. See
+[Viser](https://github.com/isri-aist/TaskPromptRL/blob/main/doc/viser_viewer.md)
+for recording/replay. The viewer does not start sensors or g1_ctrl.
 
-GLIM should initialize from a stable robot. A fixed sensor startup delay is not a
-readiness condition. Following a simulation clock reset, restart external GLIM
-and submit a new goal; do not continue a trajectory across clock/map epochs.
+### 6. Individual commands or transport sequence
+
+From TaskPromptRL, approach one observed marker:
+
+```bash
+cd ~/src/TaskPromptRL
+python scripts/send_navigation_goal.py --frame-name carry_box --offset 0.3 --wait
+```
+
+For the whole supplied scene, choose **one** workflow:
+
+- `bash command.sh`: individual commands with terminal pauses between stages.
+  It starts with the box-approach goal; do not separately repeat that step.
+- `python scripts/run_transport.py --execute --manual`: confirm each plan step.
+- `python scripts/run_transport.py --execute`: run the reviewed plan automatically.
+- Viser browser: preview and explicitly execute each command.
+
+The scene-specific plan uses separate backward **1.2 m** and left-turn **1.0 rad**
+goals before observing the destination marker. Those constants were selected once
+with offline evaluation truth; runtime uses the fixed constants and fresh images.
+Do not apply this plan unchanged to a different layout. MotionPrompt box dimensions
+and pickup/place references are also plan inputs. See the
+[sequence guide](https://github.com/isri-aist/TaskPromptRL/blob/main/doc/transport_sequence.md).
+
+Motion sending exits on acceptance, not playback completion. Confirm the controller
+reports `FINISHED; holding final reference, READY` before the next manual stage.
+Navigation `--wait` reports goal-specific arrival, not stationary feet.
 
 ## GLIM-free sim2sim
 
-Use the same scene/camera/recognition, but omit external GLIM, pass
-`--disable-lidar` to the simulator, and start deploy with:
+Replace steps 1 and 2 with these commands and omit step 3:
+
+```bash
+simulate/build/unitree_mujoco --network lo --disable-lidar \
+  --scene src/assets/robots/unitree_g1/xmls/scene_g1_table_box_glim.xml
+```
 
 ```bash
 python scripts/run_online_deploy.py --network lo --environment sim \
   --navigation-localization-source simulator
 ```
 
-This explicitly uses MuJoCo truth from `rt/sportmodestate` for robot localization.
-Recognition, target positions and marker search must not consume object truth.
-`/evaluation/frame_pose_list` is only for evaluating results. There is no `auto`
-selection or fallback from failed GLIM to truth.
+All other steps are identical. This source explicitly uses MuJoCo robot truth
+from `rt/sportmodestate` for localization/displacement and goal time compensation.
+Recognition, camera transforms and marker goals do not use object truth.
+`/evaluation/frame_pose_list` is evaluation-only. There is no automatic source
+selection or fallback when GLIM fails.
 
-## Real
+## Real hardware
 
-The simulator is replaced by the existing Livox driver and camera bridge:
+Replace MuJoCo with the existing real Livox driver and camera stream. Use the same
+external GLIM command/configuration. Complete the robot's established low-level
+control preparation before starting g1_ctrl; the simulator's keyboard hang toggle
+does not apply. Mode buttons use the existing Unitree remote. This workflow does
+not forward a PC-connected Xbox directly to a real robot.
+
+The existing G1 preparation procedure is to power on while suspended, wait for
+zero-torque mode, then use `L2 + R2` to enter debug/damping mode. Connect Ethernet
+and configure the PC interface for the robot network (the existing example is
+`192.168.123.222/24`). Select the actual interface in all commands below. Confirm
+the robot's low-level control preparation using its established operating procedure.
+Once g1_ctrl is ready, use the remote's `L2 + Up` for FixStand and `R2 + A` for
+Velocity; physical support release follows the real-robot procedure.
+
+Start recognition and deploy in separate terminals (replace the interface):
 
 ```bash
-python scripts/camera_opencv.py <robot-interface> --no-display --no-publish-static-tf
-python aruco/frame_pose_publisher.py --environment real --network <robot-interface>
+python aruco/frame_pose_publisher.py --environment real --network enx9c69d37c1711
 ```
 
-Run the same external GLIM command/configuration. Start deploy with
-`--environment real --navigation-localization-source glim --glim-config ...`
-and the robot interface. `real + simulator` is rejected before creating robot
-channels. This documentation is not a claim of hardware validation: real capture
-timing, camera calibration and actual motion still require hardware checks.
+```bash
+python scripts/run_online_deploy.py --network enx9c69d37c1711 --environment real \
+  --navigation-localization-source glim --glim-config "$G1_GLIM_CONFIG"
+```
 
-## Domains and diagnostics
+For the real camera, follow the [camera setup](camera_calibration_audit.md) and use
+calibration matching the delivered image. Viser uses `--environment real`.
+`real + simulator` is rejected before creating robot channels. Real camera
+calibration, capture timing and physical motion still require hardware validation.
 
-`--domain-id N` selects Unitree DDS on deploy, recognition and simulator. Keep
-these equal. `ROS_DOMAIN_ID` independently selects ROS 2 communication for all
-sensor consumers and GLIM. Nondefault domains are useful for isolated testing.
-The legacy simulator `--domain_id` spelling is also accepted.
+## Stop
 
-Recognition output is `/frame_pose_list` in `root_yaw`, with image timestamp and
-clock-domain metadata. GLIM produces `/glim_ros/odom` for its IMU; the controller
-converts that full pose into pelvis pose at the corresponding measured waist
-state. See [frame and logging definitions](sensor_frames.md). Missing, stale or
-mismatched frame input stops Navigation commands instead of selecting truth.
+In sim, switch to Passive when ready to stop, then Ctrl+C the controller launcher
+and other terminals, and close MuJoCo. The launcher stops its own controller/worker
+process group; GLIM and independently launched programs must be stopped separately.
+Ctrl+C in a sender, sequencer or viewer stops further requests but does not cancel
+an already accepted motion. Inspect the active controller state before resuming.
