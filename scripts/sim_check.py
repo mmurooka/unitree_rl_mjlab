@@ -23,8 +23,6 @@ def prepare(args):
     run = args.run_dir.resolve()
     if run.exists() and any(run.iterdir()):
         raise ValueError('Use a new empty run directory; existing evidence is preserved')
-    if args.localization == 'glim' and args.glim_config is None:
-        raise ValueError('GLIM mode requires the same external --glim-config directory as real')
     run.mkdir(parents=True, exist_ok=True)
     for folder in ('sim/build', 'deploy/build', 'deploy/config', 'ros_logs'):
         (run/folder).mkdir(parents=True, exist_ok=True)
@@ -52,13 +50,12 @@ def prepare(args):
         'aruco': [str(args.sensor_python.absolute()), str(ROOT/'aruco/frame_pose_publisher.py'),
                   '--environment', 'sim', '--network', 'lo', '--domain-id', str(args.domain_id), '--config', str(run/'sim/config.yaml')],
     }
-    if args.glim_config:
-        for name in ('simulator','controller'):
-            commands[name] += ['--glim-config',str(args.glim_config.resolve())]
+    if args.localization == 'glim':
+        commands['controller'] += ['--glim-config',str(args.glim_config.resolve())]
     else:
         commands['simulator'] += ['--disable-lidar']
     manifest = dict(commands=commands, root=str(ROOT), localization=args.localization,
-                    glim_config=str(args.glim_config.resolve()) if args.glim_config else None,
+                    glim_config=str(args.glim_config.resolve()) if args.localization == 'glim' else None,
                     commit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),
                     environment={'ROS_DOMAIN_ID':str(args.ros_domain_id), 'ROS_LOCALHOST_ONLY':'1',
                                  'ROS_LOG_DIR':str(run/'ros_logs')},
@@ -116,7 +113,7 @@ def main():
     sub=parser.add_subparsers(dest='command',required=True)
     p=sub.add_parser('prepare'); p.add_argument('run_dir',type=Path)
     p.add_argument('--localization',choices=['glim','simulator'],required=True)
-    p.add_argument('--glim-config',type=Path)
+    p.add_argument('--glim-config',type=Path,default=ROOT/'glim/config')
     p.add_argument('--domain-id',type=int,default=83); p.add_argument('--ros-domain-id',type=int,default=84)
     p.add_argument('--sensor-python',type=Path,default=ROOT/'.venv-sensors/bin/python')
     p=sub.add_parser('run'); p.add_argument('run_dir',type=Path); p.add_argument('component',choices=['simulator','controller','aruco'])

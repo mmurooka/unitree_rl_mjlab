@@ -430,8 +430,7 @@ Mid360Simulator::Mid360Simulator(const mjModel *model, const char *scan_pattern_
   }
   catch (const std::exception &error)
   {
-    if (param::config.glim_mode) throw;
-    std::cerr << "MID-360 disabled: " << error.what() << std::endl;
+    throw std::runtime_error(std::string("MID-360 initialization failed: ") + error.what());
   }
 }
 

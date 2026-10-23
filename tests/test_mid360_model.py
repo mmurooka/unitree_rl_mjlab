@@ -1,36 +1,39 @@
-import json
+"""Evaluate MJCF sensor geometry independently of runtime localization."""
 from pathlib import Path
-import subprocess
-import tempfile
 import unittest
 
-ROOT=Path(__file__).resolve().parents[1]
+import mujoco
+import numpy as np
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 class Mid360ModelTest(unittest.TestCase):
-    def test_external_extrinsic_controls_sim_sensor_origin_and_axes(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            path=Path(tmp)
-            (path/'config.json').write_text(json.dumps({'global':{'config_ros':'ros.json','config_sensors':'sensors.json'}}))
-            (path/'ros.json').write_text(json.dumps({'glim_ros':{'imu_topic':'/livox/imu','points_topic':'/livox/lidar','acc_scale':9.81}}))
-            # Include rotation as well as translation; tests more than a fixed offset.
-            (path/'sensors.json').write_text(json.dumps({'sensors':{'T_lidar_imu':[.006,-.012,.008,.1,0,0,.99498743710662]}}))
-            model=path/'model.xml'
-            model.write_text('''<mujoco><option gravity="0 0 -9.81"/>
-            <worldbody><body><geom size=".01"/>
-            <site name="livox_frame" quat="0 0 1 0"/>
-            <site name="livox_imu"/></body></worldbody>
-            <sensor><accelerometer site="livox_imu"/></sensor></mujoco>''')
-            exe=path/'probe'
-            subprocess.run(['g++','-std=c++17','-O1','-I'+str(ROOT/'common'),
-                            '-I'+str(ROOT/'simulate/src'),'-I'+str(ROOT/'simulate/mujoco/include'),
-                            str(ROOT/'tests/mid360_model_probe.cpp'),
-                            '-L'+str(ROOT/'simulate/mujoco/lib'),
-                            '-Wl,-rpath,'+str(ROOT/'simulate/mujoco/lib'),
-                            '-lmujoco','-lyaml-cpp','-lboost_program_options','-o',str(exe)],
-                           check=True,capture_output=True)
-            result=subprocess.run([str(exe),str(model),tmp],capture_output=True,text=True)
-            self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+    def test_fixed_extrinsic_and_acceleration_across_robot_poses(self):
+        model = mujoco.MjModel.from_xml_path(str(
+            ROOT / "src/assets/robots/unitree_g1/xmls/scene_g1.xml"))
+        data = mujoco.MjData(model)
+        lidar = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, "livox_frame")
+        imu = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, "livox_imu")
+        acc = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SENSOR, "livox_acc")
+        # Freeze dynamics to evaluate static specific force, including inverted mount.
+        for quaternion in ([1, 0, 0, 0], [.5, .5, .5, .5]):
+            mujoco.mj_resetData(model, data)
+            data.qpos[3:7] = quaternion
+            mujoco.mj_kinematics(model, data)
+            mujoco.mj_comPos(model, data)
+            mujoco.mj_comVel(model, data)
+            data.qacc[:] = 0
+            mujoco.mj_rnePostConstraint(model, data)
+            mujoco.mj_sensorAcc(model, data)
+            rotation = data.site_xmat[lidar].reshape(3, 3)
+            actual = rotation.T @ (data.site_xpos[imu] - data.site_xpos[lidar])
+            np.testing.assert_allclose(actual, [.006, -.012, .008], atol=1e-12)
+            np.testing.assert_allclose(data.site_xmat[imu], data.site_xmat[lidar], atol=1e-12)
+            expected = data.site_xmat[imu].reshape(3, 3).T @ -model.opt.gravity
+            offset = model.sensor_adr[acc]
+            np.testing.assert_allclose(data.sensordata[offset:offset+3], expected, atol=1e-10)
 
 
-if __name__=='__main__': unittest.main()
+if __name__ == "__main__":
+    unittest.main()
