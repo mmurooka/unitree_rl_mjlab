@@ -22,7 +22,7 @@ stack. The following tools group only the indicated work:
 | `run_online_deploy.py` | Starts g1_ctrl and manages its shutdown. Optional `--with-motion-worker` also starts the compatibility worker. |
 | `sim_check.py prepare`, then separate `run` commands | Prepares isolated sim configuration, binaries, endpoints and logs; simulator/controller/ArUco are still started in separate terminals. GLIM is external. |
 | TaskPromptRL `run_transport.py --execute` | Executes the whole reviewed task after startup; it does not launch the sensor/control stack. |
-| TaskPromptRL `command.sh` | Runs individual task commands with terminal pauses after startup. |
+| TaskPromptRL `scripts/run_transport_interactive.sh` | Runs individual task commands with terminal pauses after startup. |
 
 For sim, prefer the numbered manual procedure below when operating the physical
 Xbox. Use [sim_check](sim_check.md) for repeatable scripted button/recording checks.
@@ -152,9 +152,17 @@ source venv-tprl/bin/activate
 python scripts/send_navigation_goal.py --frame-name carry_box --offset 0.3 --wait
 ```
 
+Marker-based commands require three consecutive image observations with maximum
+pairwise differences of 5 cm and 10 degrees in fixed localization coordinates.
+The sender compares timestamp-matched controller root poses and averages the
+accepted observations. There is no minimum duration. Missing/skipped images reset
+the count; duplicates do not count again. Keep both repositories updated because
+the ArUco publisher supplies `image_sequence`. Thresholds are in TaskPromptRL's
+`config/marker_stability.yaml`; the same checks apply to Viser and the sequencer.
+
 For the whole supplied scene, choose **one** workflow:
 
-- `bash command.sh`: individual commands with terminal pauses between stages.
+- `bash scripts/run_transport_interactive.sh`: individual commands using Navigation arrival-or-Enter and Motion Enter waits.
   It starts with the box-approach goal; do not separately repeat that step.
 - `python scripts/run_transport.py --execute --manual`: confirm each plan step.
 - `python scripts/run_transport.py --execute`: run the reviewed plan automatically.
@@ -167,9 +175,10 @@ Do not apply this plan unchanged to a different layout. MotionPrompt box dimensi
 and pickup/place references are also plan inputs. See the
 [sequence guide](https://github.com/isri-aist/TaskPromptRL/blob/main/doc/transport_sequence.md).
 
-Motion sending exits on acceptance, not playback completion. Confirm the controller
+Motion sending exits on acceptance by default; `--wait` waits for Enter only. Confirm the controller
 reports `FINISHED; holding final reference, READY` before the next manual stage.
-Navigation `--wait` reports goal-specific arrival, not stationary feet.
+Navigation `--wait` ends on goal-specific arrival or Enter; neither indicates stationary feet.
+Enter ends CLI waiting without stopping motion. There are no separate shell reads.
 
 ## GLIM-free sim2sim
 
