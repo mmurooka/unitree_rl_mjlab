@@ -8,7 +8,9 @@ in [command continuity](mimic_start_continuity.md) and
 
 ## Short retreat and matched approach clearance (2026-10-23)
 
-The revised plan uses backward 0.4 m, left turn 0.85 rad, and destination-table
+These results precede the operator-requested change to a 90-degree turn.
+
+The tested plan used backward 0.4 m, left turn 0.85 rad, and destination-table
 center offset 0.43 m. Both table approaches target 0.23 m pelvis clearance from
 the near edge. The command limits are 30 degrees for legs and 20 for waist/arms.
 Offline viewpoint evaluation used authorized scene truth once, with measured

@@ -169,9 +169,10 @@ For the whole supplied scene, choose **one** workflow:
 - `python scripts/run_transport.py --execute --run-dir /path/to/new-sequence-run`: run the reviewed plan automatically.
 - Viser browser: preview and explicitly execute each command.
 
-The scene-specific plan uses separate backward **0.4 m** and left-turn **0.85 rad**
-goals before observing the destination marker. Those constants were selected once
-with offline evaluation truth; runtime uses the fixed constants and fresh images.
+The scene-specific plan uses separate backward **0.4 m** and left-turn
+**pi/2 rad (90 degrees)** goals before observing the destination marker.
+Runtime uses these fixed constants and fresh images. The current turn angle was
+requested for real-hardware operation; earlier sim validation used 0.85 rad.
 Do not apply this plan unchanged to a different layout. MotionPrompt box dimensions
 and pickup/place references are also plan inputs. See the
 [sequence guide](https://github.com/isri-aist/TaskPromptRL/blob/main/doc/transport_sequence.md).
