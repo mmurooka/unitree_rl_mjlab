@@ -164,7 +164,7 @@ For the whole supplied scene, choose **one** workflow:
 
 - `bash scripts/run_transport_interactive.sh`: individual commands using Navigation arrival-or-Enter and Motion Enter waits.
   It starts with the box-approach goal; do not separately repeat that step.
-- `python scripts/run_transport.py --execute --manual`: confirm each plan step.
+- `python scripts/run_transport.py --execute --manual --run-dir /path/to/new-sequence-run`: preview and confirm each plan step. Add `--sequence-run /path/to/new-sequence-run` to live Viser to display each pending goal/path or Mimic terminal posture.
 - `python scripts/run_transport.py --execute`: run the reviewed plan automatically.
 - Viser browser: preview and explicitly execute each command.
 
