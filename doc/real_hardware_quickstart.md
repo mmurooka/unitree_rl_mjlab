@@ -1,8 +1,18 @@
 # Real hardware: manual transport with Viser recording
 
 Run each block in a separate terminal. These commands use the reported checkout
-paths and network interface. Livox streaming must already be running. Complete
-the robot's low-level control preparation first.
+paths and network interface. Complete the robot's low-level control preparation
+first.
+
+## 0. Livox driver — unitree_rl_mjlab, no venv
+
+Skip this block if the Livox driver is already running. Run only one driver.
+
+```bash
+cd /home/user/workspace_kitagawa/unitree/unitree_rl_mjlab_navi
+source ~/ros2_ws/install/setup.bash
+ros2 launch glim/launch/livox.launch.py
+```
 
 ## 1. GLIM — unitree_rl_mjlab, no venv
 
