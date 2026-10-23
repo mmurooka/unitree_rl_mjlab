@@ -32,12 +32,12 @@ python scripts/camera_opencv.py enx9c69d37c1711 --no-display \
   --calibration aruco/calibrations/d435i_243122071510_color_1920x1080.yaml
 ```
 
-## 3. ArUco — unitree_rl_mjlab, venv-tprl
+## 3. ArUco — unitree_rl_mjlab, .venv-ar
 
 ```bash
 cd /home/user/workspace_kitagawa/unitree/unitree_rl_mjlab_navi
 source /opt/ros/jazzy/setup.bash
-source ../TaskPromptRL/venv-tprl/bin/activate
+source .venv-ar/bin/activate
 python aruco/frame_pose_publisher.py --environment real --network enx9c69d37c1711
 ```
 
