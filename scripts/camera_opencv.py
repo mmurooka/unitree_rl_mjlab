@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import hashlib
 import json
 import math
@@ -25,8 +25,8 @@ from sensor_msgs.msg import CameraInfo, Image
 from tf2_ros import StaticTransformBroadcaster
 
 
-CAMERA_WIDTH = 640
-CAMERA_HEIGHT = 480
+CAMERA_WIDTH = 960
+CAMERA_HEIGHT = 540
 DEFAULT_IMAGE_TOPIC = "/camera/camera/color/image_raw"
 DEFAULT_CAMERA_INFO_TOPIC = "/camera/camera/color/camera_info"
 DEFAULT_FRAME_ID = "g1_front_camera_optical_frame"
@@ -81,8 +81,8 @@ def load_calibration(path: Path) -> CameraCalibration:
 
     width = int(document.get("image_width", 0))
     height = int(document.get("image_height", 0))
-    if (width, height) != (CAMERA_WIDTH, CAMERA_HEIGHT):
-        raise ValueError("real camera calibration must describe the actual 640x480 stream")
+    if width <= 0 or height <= 0:
+        raise ValueError("calibration dimensions must be positive")
 
     distortion = _matrix_data(document, "distortion_coefficients", length=None)
     if not distortion:
@@ -142,16 +142,35 @@ def load_calibration(path: Path) -> CameraCalibration:
 def matching_intrinsics(
     calibration: CameraCalibration, width: int, height: int
 ) -> tuple[list[float], list[float]]:
-    """Require native 640x480 images and matching calibration; never guess a resize."""
-    if (width, height) != (CAMERA_WIDTH, CAMERA_HEIGHT):
-        raise ValueError(
-            f"camera image is {width}x{height}; configure the source stream to 640x480. "
-            "Unitree GetImageSample cannot set its resolution; no image/parameter resize is applied."
-        )
+    """Require calibration for the exact image profile; never guess source intrinsics."""
     if (width, height) != (calibration.width, calibration.height):
-        raise ValueError("image and calibration dimensions must match exactly")
+        raise ValueError(
+            f"image {width}x{height} does not match calibration "
+            f"{calibration.width}x{calibration.height}"
+        )
     return list(calibration.camera_matrix), list(calibration.projection_matrix)
 
+
+
+def prepare_image(
+    image: np.ndarray, calibration: CameraCalibration,
+) -> tuple[np.ndarray, CameraCalibration]:
+    """Resize the complete 16:9 image, preserving field of view and pixel centers."""
+    height, width = image.shape[:2]
+    matching_intrinsics(calibration, width, height)
+    if width * CAMERA_HEIGHT != height * CAMERA_WIDTH:
+        raise ValueError("source must be 16:9 for aspect-preserving 960x540 output")
+    sx, sy = CAMERA_WIDTH / width, CAMERA_HEIGHT / height
+    affine = np.array([[sx, 0., (sx - 1.) / 2.],
+                       [0., sy, (sy - 1.) / 2.],
+                       [0., 0., 1.]])
+    output = cv2.resize(image, (CAMERA_WIDTH, CAMERA_HEIGHT), interpolation=cv2.INTER_AREA)
+    transformed = replace(
+        calibration, width=CAMERA_WIDTH, height=CAMERA_HEIGHT,
+        camera_matrix=tuple((affine @ np.asarray(calibration.camera_matrix).reshape(3, 3)).flat),
+        projection_matrix=tuple((affine @ np.asarray(calibration.projection_matrix).reshape(3, 4)).flat),
+    )
+    return output, transformed
 
 def camera_info_message(
     calibration: CameraCalibration,
@@ -283,6 +302,8 @@ class G1CameraPublisher(Node):
     def run(self) -> None:
         while rclpy.ok():
             code, data = self.client.GetImageSample()
+            if not rclpy.ok():
+                break
             if code != 0:
                 self.warn_throttled(f"GetImageSample failed with code {code}")
                 time.sleep(0.05)
@@ -304,14 +325,16 @@ class G1CameraPublisher(Node):
                 self.get_logger().info(
                     f"SDK JPEG decoded as {width}x{height}; calibration "
                     f"{self.calibration.width}x{self.calibration.height}; "
-                    "bridge applies no resize/crop/undistortion"
+                    "bridge resizes the full 16:9 image to 960x540 with transformed K/P"
                 )
+            image, output_calibration = prepare_image(image, self.calibration)
             self.info_publisher.publish(
                 camera_info_message(
-                    self.calibration, width, height, self.frame_id, stamp,
+                    output_calibration, CAMERA_WIDTH, CAMERA_HEIGHT, self.frame_id, stamp,
                 )
             )
             self.image_publisher.publish(image_message(image, self.frame_id, stamp))
+            self.output_calibration = output_calibration
             self.last_image = image
             rclpy.spin_once(self, timeout_sec=0.0)
             if not self.show(image):
@@ -352,7 +375,7 @@ def parse_args(arguments: list[str] | None = None) -> argparse.Namespace:
         "--calibration",
         type=Path,
         required=True,
-        help="measured calibration for this camera and its actual 640x480 SDK stream; no default intrinsics",
+        help="calibration for the actual received JPEG dimensions, before local resize; no default intrinsics",
     )
     parser.add_argument("--image-topic", default=DEFAULT_IMAGE_TOPIC)
     parser.add_argument("--camera-info-topic", default=DEFAULT_CAMERA_INFO_TOPIC)
@@ -421,6 +444,9 @@ def main(arguments: list[str] | None = None) -> int:
         result = 2
     except KeyboardInterrupt:
         pass
+    except (rclpy.executors.ExternalShutdownException, rclpy._rclpy_pybind11.RCLError):
+        if rclpy.ok():
+            raise
     finally:
         if args.save_on_exit is not None and node.last_image is not None:
             if not cv2.imwrite(str(args.save_on_exit), node.last_image):
@@ -433,9 +459,12 @@ def main(arguments: list[str] | None = None) -> int:
                         "calibration_yaml": args.calibration.read_text(),
                         "image_width": node.last_image.shape[1],
                         "image_height": node.last_image.shape[0],
-                        "bridge_resize": False,
+                        "source_width": calibration.width,
+                        "source_height": calibration.height,
+                        "bridge_processing": "full-image aspect-preserving resize to 960x540 (OpenCV pixel centers)",
+                        "output_camera_matrix": list(node.output_calibration.camera_matrix),
                         "stream": "Unitree VideoClient.GetImageSample JPEG",
-                        "bridge_crop_or_undistortion": False,
+                        "bridge_undistortion": False,
                         "sdk_rectification": "unknown; verify on hardware",
                     }, indent=2) + "\n"
                 )

@@ -108,7 +108,7 @@ The D435 simulation publishes RealSense-compatible interfaces under
 - `depth/color/points`
 - RealSense-internal transforms below `camera_link` on `/tf_static`
 
-The default image size is 640×480. CameraInfo is derived from the MuJoCo
+The default image size is 960×540. CameraInfo is derived from the MuJoCo
 camera model, independently of the real camera calibration YAML. Color is `rgb8`. Depth is idealized `16UC1` in millimeters, with zero for an
 invalid measurement. The simulated camera has no lens distortion or noise.
 `pointcloud_downsample` applies a pixel stride to point-cloud generation while

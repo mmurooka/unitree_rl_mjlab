@@ -221,20 +221,21 @@ python3 scripts/run_online_deploy.py --network "$ROBOT_INTERFACE" --environment 
   --navigation-localization-source glim
 ```
 
-For the Unitree JPEG camera bridge, the actual stream and its calibration must
-both be 640×480. Start it in another terminal:
+For the Unitree JPEG camera bridge, supply calibration for the native received
+image. The PC resizes the complete 16:9 image to 960×540 with matching CameraInfo. Start it
+in another terminal:
 
 ```bash
 source /opt/ros/humble/setup.bash
 cd /path/to/unitree_rl_mjlab
 source /path/to/TaskPromptRL/venv-tprl/bin/activate
 python scripts/camera_opencv.py "$ROBOT_INTERFACE" --no-display \
-  --calibration /path/to/actual_640x480_calibration.yaml
+  --calibration /path/to/native_stream_calibration.yaml
 ```
 
 The SDK cannot select resolution or retrieve intrinsics. The
 [camera setup](camera_calibration_audit.md) explains the required upstream
-configuration/calibration and direct-device alternative. There is no unverified
+native calibration and local image conversion. There is no unverified
 fallback. Viser uses `--environment real`.
 `real + simulator` is rejected before creating robot channels. Real camera
 calibration, capture timing and physical motion still require hardware validation.

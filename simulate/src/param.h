@@ -42,8 +42,8 @@ inline struct SimulationConfig
     int mid360_downsample = 1;
 
     bool enable_d435 = false;
-    int d435_width = 640;
-    int d435_height = 480;
+    int d435_width = 960;
+    int d435_height = 540;
     double d435_frequency = 30.0;
     double d435_min_range = 0.1;
     double d435_max_range = 10.0;

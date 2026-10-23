@@ -1,0 +1,68 @@
+image_width: 1920
+image_height: 1080
+camera_name: d435i_243122071510_color
+distortion_model: plumb_bob
+distortion_coefficients:
+  rows: 1
+  cols: 5
+  data:
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+camera_matrix:
+  rows: 3
+  cols: 3
+  data:
+  - 1358.95104980469
+  - 0.0
+  - 965.484252929688
+  - 0.0
+  - 1357.19189453125
+  - 561.276123046875
+  - 0.0
+  - 0.0
+  - 1.0
+rectification_matrix:
+  rows: 3
+  cols: 3
+  data:
+  - 1.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 1.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 1.0
+projection_matrix:
+  rows: 3
+  cols: 4
+  data:
+  - 1358.95104980469
+  - 0.0
+  - 965.484252929688
+  - 0.0
+  - 0.0
+  - 1357.19189453125
+  - 561.276123046875
+  - 0.0
+  - 0.0
+  - 0.0
+  - 1.0
+  - 0.0
+provenance:
+  device: Intel RealSense D435i
+  serial: '243122071510'
+  firmware: 5.15.1.55
+  read_date: '2026-10-23'
+  source: rs-enumerate-devices -c (device EEPROM, no streaming)
+  native_model: Inverse Brown Conrady
+  distortion_note: All five factory coefficients are zero; equivalent to zero-distortion
+    plumb_bob.
+  delivery: 'Unitree GetImageSample JPEG 1920x1080; video_hub pipeline inspected:
+    YUY2 capture, NV12 conversion, JPEG encoding.'
+  validation: Three received JPEGs decoded at 1920x1080, marker ID 0 detected. Metric/reprojection
+    validation pending. Not transferable to other cameras.

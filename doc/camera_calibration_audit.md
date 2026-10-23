@@ -1,76 +1,76 @@
-# Real camera: 640×480 and calibrated intrinsics
+# Real camera: calibrated 960×540 output
 
-The required real color stream is **640×480**, matching the simulator's default
-resolution. The real bridge does not use repository-supplied intrinsics. Supply
-calibration for the actual camera and delivered stream explicitly; the former
-unverified YAML is not available as a fallback.
+The Unitree JPEG bridge publishes **960×540** Image and CameraInfo, matching
+the simulator's output contract. It keeps the robot's existing camera service.
+The network JPEG remains at its original resolution: local resizing does not
+reduce robot-to-PC traffic.
 
-## Current Unitree JPEG bridge
+## Start
 
-In each camera terminal, set the actual robot-facing interface (inspect names
-with `ip -brief link` and replace this placeholder):
-
-```bash
-export ROBOT_INTERFACE=YOUR_ROBOT_INTERFACE
-```
+In the camera terminal:
 
 ```bash
-python scripts/camera_opencv.py "$ROBOT_INTERFACE" --no-display \
-  --calibration /path/to/actual_640x480_calibration.yaml
+source /opt/ros/humble/setup.bash
+cd /path/to/unitree_rl_mjlab
+source /path/to/TaskPromptRL/venv-tprl/bin/activate
+python scripts/camera_opencv.py YOUR_ROBOT_INTERFACE --no-display \
+  --calibration /path/to/native_stream_calibration.yaml
 ```
 
-`--calibration` is required. Missing/invalid calibration fails before initializing
-the Unitree SDK. Both calibration dimensions and received JPEG dimensions must
-be 640×480. A different received size stops the bridge before publishing that
-image or CameraInfo. The bridge does not resize, crop, undistort or scale K/P.
-Recognition uses measured model kinematics; static drawing TF is off by default.
+Supply calibration for the **received JPEG before resizing**.
+The decoded dimensions must exactly match that calibration; a mismatch stops
+publication. No default or guessed intrinsics are used.
+The bridge resizes the complete 16:9 image to 960×540 without cropping,
+stretching or padding. A 1920×1080 input is reduced by 1/2 in each dimension.
+The full field of view is preserved: approximately 70.5° horizontal and 43.4°
+vertical for the checked camera. Non-16:9 inputs are rejected instead of silently
+changing aspect ratio.
 
-The installed `VideoClient.GetImageSample` API only returns JPEG bytes. It has no
-resolution-setting or intrinsic-calibration query. Enforcing 640×480 here does
-**not** reconfigure the robot's camera or its JPEG server. That upstream stream
-must be configured separately. Until a matching actual stream and calibration
-are available, the bridge intentionally cannot run recognition with guessed values.
+K and P receive the same pixel transformation as the image, including OpenCV's
+pixel-center convention. D and R remain unchanged; no undistortion is performed.
+Recognition receives the transformed CameraInfo. Image and CameraInfo use the
+same frame and receipt timestamp. Static drawing TF remains off by default.
+The sim camera supplies its own calibrated model parameters: the default model now uses approximately the same color field of view.
+Its ideal centered principal point still differs from the real calibrated one.
 
-## Obtaining actual calibration
+## Calibration obtained from the connected robot
 
-For direct access to the D435, configure the color stream to 640×480 and retrieve
-intrinsics from the active `video_stream_profile.get_intrinsics()`. The
-[RealSense SDK projection documentation](https://dev.realsenseai.com/docs/projection-in-realsense-sdk-2-0/)
-describes per-stream parameters. This requires access to the device, typically
-on the computer physically connected to it. A RealSense ROS camera driver can
-publish Image and CameraInfo together there; this is a different acquisition
-path from the Unitree JPEG bridge and is not automatically launched by this repo.
-
-For Unitree JPEG delivery, the YAML must describe that exact delivered image.
-Do not copy raw D435 intrinsics if the JPEG server crops, resizes, rectifies or
-uses another stream. Establish the delivery profile or calibrate the delivered
-images with a known-size board. A syntactically valid YAML cannot establish
-optical accuracy. Do not replace missing evidence with nominal focal lengths
-or zero distortion coefficients.
-
-The acquisition choice (direct device access versus retaining Unitree JPEG) and
-actual real-stream configuration still require confirmation. No physical camera
-was connected for these changes.
-
-## Validate and preserve evidence
-
-Capture a known-size board at varied distances, tilts and image locations. Reserve
-images for validation; check reprojection residuals and marker metric distance
-against independent measurements. Retain camera serial/profile, calibration
-provenance and the delivered-image processing description with the YAML.
+The checked camera is **D435i serial 243122071510**, firmware 5.15.1.55.
+Its native color profile is 1920×1080. Calibration read from the device using
+`rs-enumerate-devices -c` is stored in
+[the serial-specific YAML](../aruco/calibrations/d435i_243122071510_color_1920x1080.yaml).
+Use that file only for this camera and this delivered profile:
 
 ```bash
-python scripts/camera_opencv.py "$ROBOT_INTERFACE" --no-display \
-  --calibration /path/to/actual_640x480_calibration.yaml \
-  --save-on-exit /path/to/frame.png
+python scripts/camera_opencv.py YOUR_ROBOT_INTERFACE --no-display \
+  --calibration aruco/calibrations/d435i_243122071510_color_1920x1080.yaml
 ```
 
-On exit, a received valid image is saved with `frame.png.json` containing calibration
-content/hash, decoded size and processing assumptions. Image timestamps are software
-receipt times; hardware capture/transport timing remains to be measured.
+The factory reports Inverse Brown Conrady with all five coefficients zero;
+zero-distortion plumb_bob is equivalent here. Do not apply that equivalence to
+nonzero inverse-model coefficients on another camera.
+The inspected factory pipeline captures YUY2 at 1920×1080, converts to NV12
+and JPEG-encodes without an explicit geometric resize on the JPEG branch.
+Actual received JPEG dimensions were verified. This supports using the native
+factory intrinsics, but is not a full optical calibration of delivered images.
 
-The simulator derives CameraInfo from its MuJoCo camera model and does not use
-this calibration file. Successful simulated ArUco recognition does not validate
-real optics. `tests/test_camera_calibration.py` uses explicitly synthetic fixtures
-to check missing-calibration rejection, exact profile matching and unchanged K/D;
-it neither measures nor supplies real calibration.
+A 12 cm marker in the full-frame 960×540 output gave optical depth 1.012 m
+and Euclidean distance 1.085 m, compared with the operator's approximate 1.05 m.
+After repositioning, marker ID 0 remained detectable at optical depth 0.945 m.
+These are coarse sanity checks, not calibration-accuracy claims. Reserve known-size
+board images at multiple distances, tilts and image locations for metric and
+reprojection validation.
+
+## Evidence and timing
+
+`--save-on-exit /path/to/frame.png` saves the final **output** image with a JSON
+sidecar containing native calibration/hash, source/output dimensions, transformed
+K and processing description. The bridge uses software receipt time because
+GetImageSample exposes JPEG bytes, not a verified hardware capture timestamp.
+The real measured-state reader also uses PC receipt time; this is an approximation
+whose latency still needs characterization.
+
+Factory intrinsics require access to the USB-connected computer; routine JPEG
+capture runs on the operator PC without SSH. The SDK does not expose a camera
+resolution setter. Native 640×480 is supported by the device, but replacing
+the factory capture service is outside this workflow.

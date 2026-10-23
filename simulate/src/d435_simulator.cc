@@ -36,8 +36,7 @@ builtin_interfaces::msg::Time ToRosTime(double seconds)
   return stamp;
 }
 
-sensor_msgs::msg::CameraInfo MakeCameraInfo(int width, int height, double hfov_deg,
-                                            double vfov_deg, const std::string &frame)
+sensor_msgs::msg::CameraInfo MakeCameraInfo(int width, int height, double vfov_deg, const std::string &frame)
 {
   sensor_msgs::msg::CameraInfo info;
   info.header.frame_id = frame;
@@ -45,8 +44,9 @@ sensor_msgs::msg::CameraInfo MakeCameraInfo(int width, int height, double hfov_d
   info.height = height;
   info.distortion_model = "plumb_bob";
   info.d.assign(5, 0.0);
-  const double fx = width / (2.0 * std::tan(hfov_deg * kPi / 360.0));
+  // MuJoCo fovy cameras have square pixels; derive both focal lengths from the model.
   const double fy = height / (2.0 * std::tan(vfov_deg * kPi / 360.0));
+  const double fx = fy;
   const double cx = (width - 1.0) / 2.0;
   const double cy = (height - 1.0) / 2.0;
   info.k = {fx, 0.0, cx, 0.0, fy, cy, 0.0, 0.0, 1.0};
@@ -91,9 +91,7 @@ public:
       : width_(param::config.d435_width), height_(param::config.d435_height),
         period_(1.0 / param::config.d435_frequency),
         color_camera_id_(mj_name2id(model, mjOBJ_CAMERA, "camera_color_optical_frame")),
-        depth_camera_id_(mj_name2id(model, mjOBJ_CAMERA, "camera_depth_optical_frame")),
-        color_info_(MakeCameraInfo(width_, height_, 69.0, 54.48, "camera_color_optical_frame")),
-        depth_info_(MakeCameraInfo(width_, height_, 75.0, 60.39, "camera_depth_optical_frame"))
+        depth_camera_id_(mj_name2id(model, mjOBJ_CAMERA, "camera_depth_optical_frame"))
   {
     if (width_ <= 0 || height_ <= 0 || param::config.d435_frequency <= 0.0 ||
         param::config.d435_pointcloud_downsample < 1 || color_camera_id_ < 0 ||
@@ -101,6 +99,8 @@ public:
     {
       throw std::runtime_error("invalid D435 configuration or camera missing from MJCF");
     }
+    color_info_ = MakeCameraInfo(width_, height_, model->cam_fovy[color_camera_id_], "camera_color_optical_frame");
+    depth_info_ = MakeCameraInfo(width_, height_, model->cam_fovy[depth_camera_id_], "camera_depth_optical_frame");
     mjv_defaultScene(&scene_);
     mjv_makeScene(model, &scene_, 100000);
     mjv_defaultOption(&option_);
