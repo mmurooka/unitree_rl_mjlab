@@ -196,8 +196,18 @@ python scripts/run_online_deploy.py --network enx9c69d37c1711 --environment real
   --navigation-localization-source glim --glim-config "$G1_GLIM_CONFIG"
 ```
 
-For the real camera, follow the [camera setup](camera_calibration_audit.md) and use
-calibration matching the delivered image. Viser uses `--environment real`.
+For the Unitree JPEG camera bridge, the actual stream and its calibration must
+both be 640×480. Start it in another terminal:
+
+```bash
+python scripts/camera_opencv.py enx9c69d37c1711 --no-display \
+  --calibration /path/to/actual_640x480_calibration.yaml
+```
+
+The SDK cannot select resolution or retrieve intrinsics. The
+[camera setup](camera_calibration_audit.md) explains the required upstream
+configuration/calibration and direct-device alternative. There is no unverified
+fallback. Viser uses `--environment real`.
 `real + simulator` is rejected before creating robot channels. Real camera
 calibration, capture timing and physical motion still require hardware validation.
 

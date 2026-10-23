@@ -25,8 +25,8 @@ from sensor_msgs.msg import CameraInfo, Image
 from tf2_ros import StaticTransformBroadcaster
 
 
-ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_CALIBRATION = ROOT / "aruco" / "g1_front_camera.yaml"
+CAMERA_WIDTH = 640
+CAMERA_HEIGHT = 480
 DEFAULT_IMAGE_TOPIC = "/camera/camera/color/image_raw"
 DEFAULT_CAMERA_INFO_TOPIC = "/camera/camera/color/camera_info"
 DEFAULT_FRAME_ID = "g1_front_camera_optical_frame"
@@ -81,8 +81,8 @@ def load_calibration(path: Path) -> CameraCalibration:
 
     width = int(document.get("image_width", 0))
     height = int(document.get("image_height", 0))
-    if width <= 0 or height <= 0:
-        raise ValueError("image_width and image_height must be positive")
+    if (width, height) != (CAMERA_WIDTH, CAMERA_HEIGHT):
+        raise ValueError("real camera calibration must describe the actual 640x480 stream")
 
     distortion = _matrix_data(document, "distortion_coefficients", length=None)
     if not distortion:
@@ -139,31 +139,18 @@ def load_calibration(path: Path) -> CameraCalibration:
     )
 
 
-def scaled_intrinsics(
-    calibration: CameraCalibration, width: int, height: int, *, allow_resize: bool = False
+def matching_intrinsics(
+    calibration: CameraCalibration, width: int, height: int
 ) -> tuple[list[float], list[float]]:
-    """Only scale when the caller explicitly confirms full-frame resizing."""
-    if width <= 0 or height <= 0:
-        raise ValueError("image dimensions must be positive")
-    if (width, height) != (calibration.width, calibration.height) and not allow_resize:
+    """Require native 640x480 images and matching calibration; never guess a resize."""
+    if (width, height) != (CAMERA_WIDTH, CAMERA_HEIGHT):
         raise ValueError(
-            f"SDK image is {width}x{height}, calibration is "
-            f"{calibration.width}x{calibration.height}. Supply matching calibration; "
-            "use --allow-intrinsics-resize only for a verified full-frame resize (not crop)."
+            f"camera image is {width}x{height}; configure the source stream to 640x480. "
+            "Unitree GetImageSample cannot set its resolution; no image/parameter resize is applied."
         )
-    scale_x = float(width) / calibration.width
-    scale_y = float(height) / calibration.height
-    camera_matrix = list(calibration.camera_matrix)
-    projection_matrix = list(calibration.projection_matrix)
-    for index in (0, 1, 2):
-        camera_matrix[index] *= scale_x
-    for index in (3, 4, 5):
-        camera_matrix[index] *= scale_y
-    for index in range(4):
-        projection_matrix[index] *= scale_x
-    for index in range(4, 8):
-        projection_matrix[index] *= scale_y
-    return camera_matrix, projection_matrix
+    if (width, height) != (calibration.width, calibration.height):
+        raise ValueError("image and calibration dimensions must match exactly")
+    return list(calibration.camera_matrix), list(calibration.projection_matrix)
 
 
 def camera_info_message(
@@ -172,11 +159,8 @@ def camera_info_message(
     height: int,
     frame_id: str,
     stamp: Any,
-    *, allow_resize: bool = False,
 ) -> CameraInfo:
-    camera_matrix, projection_matrix = scaled_intrinsics(
-        calibration, width, height, allow_resize=allow_resize
-    )
+    camera_matrix, projection_matrix = matching_intrinsics(calibration, width, height)
     message = CameraInfo()
     message.header.stamp = stamp
     message.header.frame_id = frame_id
@@ -237,12 +221,10 @@ class G1CameraPublisher(Node):
         publish_static_tf: bool,
         display: bool,
         window_name: str,
-        allow_intrinsics_resize: bool = False,
     ) -> None:
         super().__init__("g1_camera_publisher")
         self.client = client
         self.calibration = calibration
-        self.allow_intrinsics_resize = allow_intrinsics_resize
         self.frame_id = frame_id
         self.display_enabled = display
         self.window_name = window_name
@@ -321,13 +303,12 @@ class G1CameraPublisher(Node):
             if self.last_image is None:
                 self.get_logger().info(
                     f"SDK JPEG decoded as {width}x{height}; calibration "
-                    f"{self.calibration.width}x{self.calibration.height}, "
-                    f"explicit resize={self.allow_intrinsics_resize}; bridge applies no crop/undistortion"
+                    f"{self.calibration.width}x{self.calibration.height}; "
+                    "bridge applies no resize/crop/undistortion"
                 )
             self.info_publisher.publish(
                 camera_info_message(
                     self.calibration, width, height, self.frame_id, stamp,
-                    allow_resize=self.allow_intrinsics_resize,
                 )
             )
             self.image_publisher.publish(image_message(image, self.frame_id, stamp))
@@ -370,16 +351,14 @@ def parse_args(arguments: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--calibration",
         type=Path,
-        default=DEFAULT_CALIBRATION,
-        help=f"ROS camera calibration YAML (default: {DEFAULT_CALIBRATION})",
+        required=True,
+        help="measured calibration for this camera and its actual 640x480 SDK stream; no default intrinsics",
     )
     parser.add_argument("--image-topic", default=DEFAULT_IMAGE_TOPIC)
     parser.add_argument("--camera-info-topic", default=DEFAULT_CAMERA_INFO_TOPIC)
     parser.add_argument("--frame-id", default=DEFAULT_FRAME_ID)
     parser.add_argument("--timeout", type=float, default=3.0)
     parser.add_argument("--window-name", default="G1 front camera")
-    parser.add_argument("--allow-intrinsics-resize", action="store_true",
-                        help="explicitly confirm that differing SDK dimensions are a full-frame resize, not a crop")
     parser.add_argument("--publish-static-tf", action="store_true",
                         help="optional legacy drawing TF; recognition uses measured model FK")
     parser.add_argument(
@@ -433,10 +412,13 @@ def main(arguments: list[str] | None = None) -> int:
         publish_static_tf=args.publish_static_tf,
         display=args.display,
         window_name=args.window_name,
-        allow_intrinsics_resize=args.allow_intrinsics_resize,
     )
+    result = 0
     try:
         node.run()
+    except ValueError as error:
+        print(f"camera profile error: {error}", file=sys.stderr)
+        result = 2
     except KeyboardInterrupt:
         pass
     finally:
@@ -451,7 +433,7 @@ def main(arguments: list[str] | None = None) -> int:
                         "calibration_yaml": args.calibration.read_text(),
                         "image_width": node.last_image.shape[1],
                         "image_height": node.last_image.shape[0],
-                        "allow_intrinsics_resize": args.allow_intrinsics_resize,
+                        "bridge_resize": False,
                         "stream": "Unitree VideoClient.GetImageSample JPEG",
                         "bridge_crop_or_undistortion": False,
                         "sdk_rectification": "unknown; verify on hardware",
@@ -460,7 +442,7 @@ def main(arguments: list[str] | None = None) -> int:
         node.destroy_node()
         if rclpy.ok():
             rclpy.shutdown()
-    return 0
+    return result
 
 
 if __name__ == "__main__":

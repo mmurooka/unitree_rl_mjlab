@@ -23,7 +23,8 @@ python aruco/frame_pose_publisher.py --environment sim --network lo
 For a robot, start the camera bridge separately, then the same recognition node:
 
 ```bash
-python scripts/camera_opencv.py <robot-interface> --no-display --no-publish-static-tf
+python scripts/camera_opencv.py <robot-interface> --no-display \
+  --calibration /path/to/actual_640x480_calibration.yaml
 python aruco/frame_pose_publisher.py --environment real --network <robot-interface>
 ```
 
@@ -63,8 +64,8 @@ outer edge (12 cm in the supplied configuration), excluding the quiet zone.
 Tests: `python -m unittest discover -s aruco -p test_frame_pose_publisher.py`
 and `python -m unittest discover -s tests -p test_robot_frames.py`.
 
-The real bridge requires decoded dimensions to match its calibration by default.
-Use `--allow-intrinsics-resize` only after confirming full-image resize semantics.
-`--save-on-exit frame.png` also saves calibration/stream metadata beside the image.
-See the [calibration audit](../doc/camera_calibration_audit.md); the supplied real
-intrinsics remain optically unverified. Static TF is now off by default.
+The real bridge requires a 640×480 stream and an explicitly supplied actual
+calibration. It has no default intrinsic values and applies no resize/scaling.
+`--save-on-exit frame.png` saves the valid image and calibration/stream metadata.
+See [real camera setup](../doc/camera_calibration_audit.md) for acquisition limits
+and calibration requirements. Static TF is off by default.
