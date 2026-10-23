@@ -32,9 +32,11 @@ GLIM runs externally, with the same configuration as real hardware. See
 [the sim/real workflow](../doc/sim_real_workflow.md) for individual startup
 commands, including the required Velocity-before-hang-release ordering.
 Use the versioned [`glim/config`](../glim/config/) directory; its installation
-and path setup are described in the [GLIM guide](../glim/README.md).
-`--glim-config /absolute/path` reads the external sensor settings to match
-simulated IMU placement and topic/frame names. It never starts or modifies GLIM.
+and startup are described in the [GLIM guide](../glim/README.md).
+The simulator does not accept GLIM configuration arguments or read GLIM settings.
+MJCF defines the LiDAR and separate IMU sites; `simulate/config.yaml` defines
+the sensor topics/frame labels. GLIM calibration must independently match these.
+MID-360 initialization errors stop startup instead of silently disabling it.
 Livox acceleration is published in g in both environments.
 
 The GLIM room walls and ceiling use geometry group 5, hidden by default in the

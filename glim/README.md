@@ -25,8 +25,8 @@ host IP addresses as described in the tutorial.
 
 The versioned [`config/`](config/) directory contains the shared configuration for
 sim and real. GLIM itself and the Livox driver are external installations; launch
-GLIM in a separate terminal. The supplied configuration values are included without
-modification.
+GLIM in a separate terminal. The shared configuration disables IMU-to-LiDAR TF publication because Livox
+labels both streams `livox_frame`. Recognition and Navigation do not consume this TF.
 
 Run the following from the repository root. Replace `/path/to/unitree_rl_mjlab`
 with the actual checkout location:
@@ -34,22 +34,31 @@ with the actual checkout location:
 ```bash
 source /opt/ros/humble/setup.bash
 cd /path/to/unitree_rl_mjlab
-export G1_GLIM_CONFIG="$(realpath glim/config)"
-ros2 run glim_ros glim_rosnode --ros-args -p config_path:="$G1_GLIM_CONFIG"
+ros2 launch glim/launch/glim.launch.py
 ```
 
-`realpath` produces an absolute path regardless of the checkout location. The
-tutorial's template-copy step into `~/config` is unnecessary when using this
-versioned configuration.
+The launch file resolves `glim/config` relative to its own location.
+`scripts/run_online_deploy.py` uses the same directory by default. No environment
+variable or configuration-path argument is required. Copying templates into
+`~/config` is unnecessary.
 
-In the simulator and deploy terminals, run the same `export` from the repository
-root and pass `--glim-config "$G1_GLIM_CONFIG"`. GLIM, simulator and deploy must
-refer to the same directory.
+For a custom configuration, pass `config_path:=/absolute/path` to the launch
+command and `--glim-config /absolute/path` to deploy. GLIM itself remains an
+external installation, started separately.
 
 `config.json` selects the sensor, ROS, preprocessing, estimation and mapping
 settings. Deploy reads the sensor extrinsic and frame names to convert GLIM's
-IMU pose into the pelvis pose. The simulator reads the same settings to match
-simulated sensor placement and output. GLIM-free simulation needs no GLIM config.
+IMU pose into the pelvis pose.
+
+The simulator never reads GLIM settings. MJCF defines the inverted LiDAR mount
+and separate IMU site, with a fixed lidar-to-IMU translation of (6, -12, 8) mm
+and identity relative rotation. Simulation transport settings define the Livox
+topics and frame labels; acceleration is published in g.
+GLIM calibration must describe this geometry, just as it must describe real
+hardware. Changing GLIM calibration does not change simulated hardware.
+This separation makes calibration mismatches observable in simulation.
+The retained offset matches the supplied calibration; actual hardware accuracy
+still requires hardware validation.
 
 See the [individual sim/real startup workflow](../doc/sim_real_workflow.md) for
 component startup order and Xbox controls.

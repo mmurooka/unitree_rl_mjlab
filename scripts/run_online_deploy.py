@@ -26,7 +26,8 @@ def main():
     )
     parser.add_argument("--environment", choices=("sim", "real"), default="real")
     parser.add_argument("--domain-id", type=int, default=0)
-    parser.add_argument("--glim-config", type=Path)
+    parser.add_argument("--glim-config", type=Path, default=root / "glim/config",
+                        help="GLIM config directory (default: this checkout/glim/config)")
     parser.add_argument("--sensor-model", type=Path)
     parser.add_argument("--with-motion-worker", action="store_true",
                         help="start the legacy worker for send_motion_prompt.py --backend worker")
@@ -40,8 +41,6 @@ def main():
     args = parser.parse_args()
     if args.environment == "real" and args.navigation_localization_source == "simulator":
         parser.error("simulator ground truth cannot be used on real hardware")
-    if args.navigation_localization_source == "glim" and args.glim_config is None:
-        parser.error("--glim-config must match the externally started GLIM config_path")
     if args.domain_id < 0:
         parser.error("--domain-id must be nonnegative")
     worker = [
@@ -61,7 +60,7 @@ def main():
                   "--motion-endpoint", args.deploy_endpoint]
     if args.navigation_endpoint is not None:
         controller.extend(["--navigation-endpoint", args.navigation_endpoint])
-    if args.glim_config is not None:
+    if args.navigation_localization_source == "glim":
         controller.extend(["--glim-config", str(args.glim_config.resolve())])
     if args.sensor_model is not None:
         controller.extend(["--sensor-model", str(args.sensor_model.resolve())])

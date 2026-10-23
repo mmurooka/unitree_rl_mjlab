@@ -8,7 +8,7 @@ Recognition does not use GLIM, ROS TF, or simulated world poses.
 
 Use Python 3.10 with ROS Humble (or Python matching your installed ROS), NumPy,
 PyYAML, OpenCV with ArUco, and `unitree_sdk2_python`. Reuse the TaskPromptRL venv
-from the [startup workflow](../doc/sim_real_workflow.md#common-terminal-setup),
+from the [startup workflow](../doc/sim_real_workflow.md#before-startup),
 including its online dependencies. Install the official Unitree SDK2 Python package there
 as for `scripts/camera_opencv.py`; DDS may require `CYCLONEDDS_HOME=/usr/local`.
 Do not use an unrelated Python version with the ROS binary modules.

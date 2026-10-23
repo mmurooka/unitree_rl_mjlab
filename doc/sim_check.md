@@ -12,17 +12,13 @@ Activate the TaskPromptRL venv described in the [startup workflow](sim_real_work
 first; it must provide the ROS/SDK recognition dependencies. The examples below
 explicitly select that active interpreter, so no `.venv-sensors` directory is needed.
 
-For GLIM mode, run from this repository root and select the same versioned
-configuration as the [normal startup workflow](../glim/README.md):
-
-```bash
-export G1_GLIM_CONFIG="$(realpath glim/config)"
-```
+Run from this repository root. GLIM mode uses the versioned `glim/config`
+by default, as in the [normal startup workflow](../glim/README.md).
 
 ```bash
 python scripts/sim_check.py prepare /path/to/new-run --localization simulator \
   --sensor-python "$(command -v python)"
-# Or: --localization glim --glim-config "$G1_GLIM_CONFIG"
+# Or: --localization glim
 ```
 
 In separate terminals, source the ROS environment and run:
@@ -54,8 +50,7 @@ The FIFO joystick interface only accepts the prepared FIFO, never a real device.
 For GLIM checks, start external GLIM normally after the stable standing stage:
 
 ```bash
-ROS_DOMAIN_ID=84 ROS_LOCALHOST_ONLY=1 ros2 run glim_ros glim_rosnode \
-  --ros-args -p config_path:="$G1_GLIM_CONFIG"
+ROS_DOMAIN_ID=84 ROS_LOCALHOST_ONLY=1 ros2 launch glim/launch/glim.launch.py
 ```
 
 The manifest contains the exact ROS domain (default 84), DDS domain (default 83)

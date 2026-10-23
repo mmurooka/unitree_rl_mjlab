@@ -38,8 +38,10 @@ ArUco recognition calls this function directly and does not require ROS TF.
 
 The controller requires `--navigation-localization-source glim|simulator`.
 `--environment real` is the default; `simulator` is rejected for real hardware.
-For GLIM pass `--glim-config /absolute/path/to/config`, the same directory passed
-to the externally launched `glim_rosnode`. It is read-only. Its `config.json`
+The deploy launcher and `glim/launch/glim.launch.py` default to this checkout's
+`glim/config`. For a custom configuration, pass `--glim-config /absolute/path`
+to deploy and `config_path:=/absolute/path` to the GLIM launch file. Direct
+`g1_ctrl` invocation still requires `--glim-config`. The directory is read-only. Its `config.json`
 selects the actual sensor/ROS files; nonstandard file names and JSON comments
 are supported. `--sensor-model` optionally selects another exported model.
 `--domain-id` selects Unitree DDS; it does not change ROS_DOMAIN_ID.
