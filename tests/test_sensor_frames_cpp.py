@@ -61,5 +61,13 @@ class CppFramesTest(unittest.TestCase):
             result=subprocess.run([self.exe,'--config',tmp],capture_output=True,text=True)
             self.assertNotEqual(result.returncode,0)
 
+    def test_shared_glim_config_uses_distinct_imu_pose_frame(self):
+        result = subprocess.run(
+            [self.exe, '--config', str(ROOT/'glim/config')],
+            capture_output=True, text=True, check=True)
+        self.assertEqual(result.stdout.split()[:2], ['livox_imu', 'odom'])
+        np.testing.assert_allclose(
+            list(map(float, result.stdout.split()[2:])), [.006, -.012, .008])
+
 
 if __name__=='__main__': unittest.main()

@@ -25,8 +25,17 @@ host IP addresses as described in the tutorial.
 
 The versioned [`config/`](config/) directory contains the shared configuration for
 sim and real. GLIM itself and the Livox driver are external installations; launch
-GLIM in a separate terminal. The shared configuration disables IMU-to-LiDAR TF publication because Livox
-labels both streams `livox_frame`. Recognition and Navigation do not consume this TF.
+GLIM in a separate terminal.
+
+Both sim and real explicitly use `livox_imu` for GLIM's IMU/base output frame
+and `livox_frame` for its LiDAR output frame. Thus `/glim_ros/odom` describes
+the IMU pose with child frame `livox_imu`; Navigation reads this name from the
+same configuration and converts that pose to the pelvis pose.
+Raw Livox messages can still label both streams `livox_frame`; the GLIM output
+names do not rewrite those input headers or change the sensor geometry.
+IMU-to-LiDAR TF publication remains disabled because recognition and Navigation
+compute sensor transforms without this TF. GLIM still uses `T_lidar_imu`
+internally. Restart GLIM and deploy together after changing frame settings.
 
 Run the following from the repository root. Replace `/path/to/unitree_rl_mjlab`
 with the actual checkout location:

@@ -54,12 +54,12 @@
     "points_time_offset": 0.0,
     "acc_scale": 0.0, // Auto-detect if zero
     // TF config
-    "imu_frame_id": "", // Auto-detect if blank
-    "lidar_frame_id": "", // Auto-detect if blank
-    "base_frame_id": "", // If blank, IMU frame ID is used
+    // Distinct output frames shared by sim and real, independent of raw labels.
+    "imu_frame_id": "livox_imu",
+    "lidar_frame_id": "livox_frame",
+    "base_frame_id": "livox_imu",
     "odom_frame_id": "odom",
     "map_frame_id": "map",
-    // Livox labels both streams livox_frame; avoid a self-transform.
     // Recognition and Navigation compute sensor transforms without this TF.
     "publish_imu2lidar": false,
     "tf_time_offset": 1e-6,
