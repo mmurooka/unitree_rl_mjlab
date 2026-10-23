@@ -71,3 +71,33 @@ still requires hardware validation.
 
 See the [individual sim/real startup workflow](../doc/sim_real_workflow.md) for
 component startup order and Xbox controls.
+
+## Livox output contract
+
+Use the tutorial's external Livox driver and its `rviz_MID360_launch.py`
+(`xfer_format=0`, PointCloud2). Source your own Livox workspace first:
+
+```bash
+source /opt/ros/humble/setup.bash
+source /path/to/ws_livox/install/setup.bash
+ros2 launch livox_ros_driver2 rviz_MID360_launch.py
+```
+
+Set the LiDAR and host addresses in that driver's `MID360_config.json` for
+your network. Keep `extrinsic_parameter` zero: raw sensor coordinates are
+converted through the shared robot model, not pre-rotated in the driver.
+
+Both sim and real publish `/livox/lidar` as PointCloud2 with x/y/z/intensity,
+tag, line and float64 `timestamp`. Each point timestamp is **absolute nanoseconds**;
+ROS header stamps remain sec/nanosec. In sim the absolute time is the simulation
+clock, not wall time. The shared GLIM configuration explicitly selects
+`perpoint_relative_time=false` and `perpoint_time_scale=1e-9`, with auto-detection
+disabled. IMU acceleration is in g; shared `acc_scale=9.80665` converts to m/s².
+Rebuild the simulator and restart GLIM together after updating this contract.
+
+The driver can select CustomMsg with `xfer_format=1`, but this changes the whole
+message type and is not this workflow. The inspected driver has no separate
+PointCloud2 setting for seconds vs nanoseconds or absolute vs relative time.
+
+For repeatable sensor-only checks and the remaining mount discrepancy, see
+[sensor validation](../doc/real_sensor_validation.md).

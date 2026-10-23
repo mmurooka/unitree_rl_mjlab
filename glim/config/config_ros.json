@@ -52,7 +52,7 @@
     // IMU config
     "imu_time_offset": 0.0,
     "points_time_offset": 0.0,
-    "acc_scale": 0.0, // Auto-detect if zero
+    "acc_scale": 9.80665, // Livox raw acceleration is in g (sim and real)
     // TF config
     // Distinct output frames shared by sim and real, independent of raw labels.
     "imu_frame_id": "livox_imu",

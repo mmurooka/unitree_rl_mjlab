@@ -309,9 +309,9 @@ private:
     message.angular_velocity.y = gyro[1];
     message.angular_velocity.z = gyro[2];
     // Livox driver convention: acceleration in g; external GLIM scales to m/s^2.
-    message.linear_acceleration.x = acc[0] / 9.81;
-    message.linear_acceleration.y = acc[1] / 9.81;
-    message.linear_acceleration.z = acc[2] / 9.81;
+    message.linear_acceleration.x = acc[0] / 9.80665;
+    message.linear_acceleration.y = acc[1] / 9.80665;
+    message.linear_acceleration.z = acc[2] / 9.80665;
     std::lock_guard<std::mutex> lock(queue_mutex_);
     if (imu_queue_.size() == kMaxQueuedImus)
     {
@@ -353,8 +353,9 @@ private:
       std::memcpy(dst + 12, &point.intensity, sizeof(float));
       dst[16] = point.tag;
       dst[17] = point.line;
-      const double relative_timestamp = point.timestamp - cloud.stamp;
-      std::memcpy(dst + 18, &relative_timestamp, sizeof(double));
+      // Livox PointCloud2 stores absolute per-point timestamps in nanoseconds.
+      const double timestamp_ns = point.timestamp * 1e9;
+      std::memcpy(dst + 18, &timestamp_ns, sizeof(double));
     }
     return message;
   }
