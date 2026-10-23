@@ -1,12 +1,13 @@
 # Real hardware: manual transport with Viser recording
 
-Run each block in a separate terminal, from the repository in its heading.
-Assumes sibling checkouts, the interface below, and an already running Livox
-stream. Complete the robot's low-level control preparation first.
+Run each block in a separate terminal. These commands use the reported checkout
+paths and network interface. Livox streaming must already be running. Complete
+the robot's low-level control preparation first.
 
 ## 1. GLIM — unitree_rl_mjlab, no venv
 
 ```bash
+cd /home/user/workspace_kitagawa/unitree/unitree_rl_mjlab_navi
 source ~/ros2_ws/install/setup.bash
 ros2 launch glim/launch/glim.launch.py
 ```
@@ -14,6 +15,7 @@ ros2 launch glim/launch/glim.launch.py
 ## 2. Camera — unitree_rl_mjlab, venv-tprl
 
 ```bash
+cd /home/user/workspace_kitagawa/unitree/unitree_rl_mjlab_navi
 source /opt/ros/jazzy/setup.bash
 source ../TaskPromptRL/venv-tprl/bin/activate
 python scripts/camera_opencv.py enx9c69d37c1711 --no-display \
@@ -23,16 +25,18 @@ python scripts/camera_opencv.py enx9c69d37c1711 --no-display \
 ## 3. ArUco — unitree_rl_mjlab, venv-tprl
 
 ```bash
+cd /home/user/workspace_kitagawa/unitree/unitree_rl_mjlab_navi
 source /opt/ros/jazzy/setup.bash
 source ../TaskPromptRL/venv-tprl/bin/activate
 python aruco/frame_pose_publisher.py --environment real --network enx9c69d37c1711
 ```
 
-## 4. Deploy — unitree_rl_mjlab, venv-mjlab
+## 4. Deploy — unitree_rl_mjlab, tmp
 
 ```bash
+cd /home/user/workspace_kitagawa/unitree/unitree_rl_mjlab_navi
 source /opt/ros/jazzy/setup.bash
-source venv-mjlab/bin/activate
+source tmp/bin/activate
 python scripts/run_online_deploy.py --network enx9c69d37c1711 --environment real \
   --navigation-localization-source glim
 ```
@@ -44,6 +48,7 @@ Enter Velocity with the robot remote before executing the sequence.
 Start deploy first: recording reads controller metadata at startup.
 
 ```bash
+cd /home/user/workspace_kitagawa/unitree/TaskPromptRL
 source /opt/ros/jazzy/setup.bash
 source venv-tprl/bin/activate
 python scripts/view_robot.py --live --environment real --glim --log-root ~/log
@@ -54,6 +59,7 @@ Open http://127.0.0.1:8080.
 ## 6. Manual sequence — TaskPromptRL, venv-tprl
 
 ```bash
+cd /home/user/workspace_kitagawa/unitree/TaskPromptRL
 source /opt/ros/jazzy/setup.bash
 source venv-tprl/bin/activate
 python scripts/run_transport.py --execute --manual --log-root ~/log
@@ -71,6 +77,7 @@ in the sequence terminal. Ctrl+C stops further requests, not the active policy.
 After closing live Viser, replay the latest recording from TaskPromptRL:
 
 ```bash
+cd /home/user/workspace_kitagawa/unitree/TaskPromptRL
 source venv-tprl/bin/activate
 python scripts/view_robot.py --replay ~/log/latest/viser
 ```
