@@ -6,6 +6,31 @@ in [command continuity](mimic_start_continuity.md) and
 [sensor frames](sensor_frames.md); reusable evaluation commands are in
 [simulation checks](sim_check.md).
 
+## Short retreat and matched approach clearance (2026-10-23)
+
+The revised plan uses backward 0.4 m, left turn 0.85 rad, and destination-table
+center offset 0.43 m. Both table approaches target 0.23 m pelvis clearance from
+the near edge. The command limits are 30 degrees for legs and 20 for waist/arms.
+Offline viewpoint evaluation used authorized scene truth once, with measured
+joints/IMU and the recorded 960x540 camera resolution. A 1.5-rad turn occluded the
+marker behind the carried box; 0.8–0.9 rad exposed it. Runtime used fixed constants
+and image recognition, without object truth in control.
+
+Both GLIM-free and external-GLIM runs completed all Navigation goals and lift/put.
+Five-second placement evaluation passed in each: final table-relative box centers
+were (-0.0074, 0.0006, 0.6521) m and (-0.0624, 0.0379, 0.6521) m respectively.
+No GLIM timing warning occurred. These single runs do not establish a success rate.
+All owned processes were stopped; no real hardware was commanded.
+
+The initial run directories contain poses.jsonl, joints.jsonl, sequence events,
+references and placement evaluations, but no Viser replay recording. For direct
+Viser replay, run a read-only live viewer with --record alongside the sequence;
+ordinary audit logs are not the viewer recording format. A subsequent GLIM-only
+run with Viser recording also completed transport and passed five-second
+placement evaluation (box center -0.0566, 0.0019, 0.6521 m in the table frame).
+Its viewer_record directory was opened in offline replay, with playback controls
+verified in a browser. Camera images and point clouds are live-only.
+
 ## Current workflow recheck (2026-10-23)
 
 After rebuilding the current simulator and controller, the documented startup

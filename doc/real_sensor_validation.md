@@ -180,3 +180,14 @@ The model attaches the fixed head-camera mount to the torso kinematic chain; it
 does not imply a camera physically mounted on the chest. The supplied estimate
 is too approximate, and lacks height, to certify or fit absolute camera mounting
 or pelvis-relative position. No camera extrinsic was tuned to force agreement.
+
+### Manual head-hinge follow-up
+
+The operator confirmed that both camera and Livox move with an unmeasured head
+hinge. A manual adjustment changed model/Livox gravity disagreement from 5.96
+to 14.69 degrees while pelvis-IMU foot tilt stayed nearly unchanged. A second
+adjustment reduced disagreement to 0.687 degrees; a horizontal marker then had
+1.094-degree model-derived tilt. This supersedes the earlier six-degree residual
+for the current physical head setting. Keep this setting fixed/reproducible; the
+model does not track manual hinge movement. This is static consistency evidence,
+not a full six-axis extrinsic calibration. No actuation was commanded.
