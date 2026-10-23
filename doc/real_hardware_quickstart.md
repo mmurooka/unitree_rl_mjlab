@@ -14,7 +14,7 @@ ros2 launch glim/launch/glim.launch.py
 ## 2. Camera — unitree_rl_mjlab, venv-tprl
 
 ```bash
-source /opt/ros/humble/setup.bash
+source ~/ros2_ws/install/setup.bash
 source ../TaskPromptRL/venv-tprl/bin/activate
 python scripts/camera_opencv.py enx9c69d37c1711 --no-display \
   --calibration aruco/calibrations/d435i_243122071510_color_1920x1080.yaml
@@ -23,7 +23,7 @@ python scripts/camera_opencv.py enx9c69d37c1711 --no-display \
 ## 3. ArUco — unitree_rl_mjlab, venv-tprl
 
 ```bash
-source /opt/ros/humble/setup.bash
+source ~/ros2_ws/install/setup.bash
 source ../TaskPromptRL/venv-tprl/bin/activate
 python aruco/frame_pose_publisher.py --environment real --network enx9c69d37c1711
 ```
@@ -31,7 +31,7 @@ python aruco/frame_pose_publisher.py --environment real --network enx9c69d37c171
 ## 4. Deploy — unitree_rl_mjlab, venv-mjlab
 
 ```bash
-source /opt/ros/humble/setup.bash
+source ~/ros2_ws/install/setup.bash
 source venv-mjlab/bin/activate
 python scripts/run_online_deploy.py --network enx9c69d37c1711 --environment real \
   --navigation-localization-source glim
@@ -44,7 +44,7 @@ Enter Velocity with the robot remote before executing the sequence.
 Start deploy first: recording reads controller metadata at startup.
 
 ```bash
-source /opt/ros/humble/setup.bash
+source ~/ros2_ws/install/setup.bash
 source venv-tprl/bin/activate
 python scripts/view_robot.py --live --environment real --glim --log-root ~/log
 ```
@@ -54,7 +54,7 @@ Open http://127.0.0.1:8080.
 ## 6. Manual sequence — TaskPromptRL, venv-tprl
 
 ```bash
-source /opt/ros/humble/setup.bash
+source ~/ros2_ws/install/setup.bash
 source venv-tprl/bin/activate
 python scripts/run_transport.py --execute --manual --log-root ~/log
 ```
