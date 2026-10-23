@@ -133,13 +133,14 @@ From TaskPromptRL, use read-only viewing alongside individual commands:
 source /opt/ros/humble/setup.bash
 cd /path/to/TaskPromptRL
 source venv-tprl/bin/activate
-python scripts/view_robot.py --live --environment sim --read-only
+python scripts/view_robot.py --live --environment sim --read-only --glim
 ```
 
 Open `http://127.0.0.1:8080`. For browser preview followed by its execution button,
 omit `--read-only` and use the browser as the command owner. See
 [Viser](https://github.com/isri-aist/TaskPromptRL/blob/main/doc/viser_viewer.md)
-for recording/replay. The viewer does not start sensors or g1_ctrl.
+for recording/replay. `--glim` enables GLIM point-cloud display; visibility can
+also be toggled in the browser. The viewer does not start sensors, GLIM or g1_ctrl.
 
 ### 6. Individual commands or transport sequence
 
@@ -184,8 +185,9 @@ Enter ends CLI waiting without stopping motion. There are no separate shell read
 
 Use this procedure after starting the sensors, recognition, localization and
 controller, and entering Velocity. In simulation, release hang only after Velocity
-is active. These commands work with both GLIM and GLIM-free simulation. On real
-hardware, change the viewer's `--environment sim` to `--environment real`.
+is active. The commands below enable GLIM point-cloud display. For GLIM-free
+simulation, omit `--glim`. On real hardware, change the viewer's
+`--environment sim` to `--environment real` and keep `--glim`.
 
 Use the viewer command below **instead of** the optional viewer in step 5. Both
 terminals must use the same new run directory; the viewer can start before that
@@ -197,7 +199,7 @@ directory exists.
 source /opt/ros/humble/setup.bash
 cd /path/to/TaskPromptRL
 source venv-tprl/bin/activate
-python scripts/view_robot.py --live --environment sim \
+python scripts/view_robot.py --live --environment sim --glim \
   --sequence-run /path/to/new-sequence-run
 ```
 
@@ -251,6 +253,14 @@ python3 scripts/run_online_deploy.py --network lo --environment sim \
   --navigation-localization-source simulator
 ```
 
+Omit `--glim` from the Viser command in step 5 or the manual-preview procedure.
+For example, passive viewing without GLIM is:
+
+```bash
+python scripts/view_robot.py --live --environment sim --read-only
+```
+
+Keep `--sequence-run /path/to/new-sequence-run` when using manual previews.
 All other steps are identical. This source explicitly uses MuJoCo robot truth
 from `rt/sportmodestate` for localization/displacement and goal time compensation.
 Recognition, camera transforms and marker goals do not use object truth.
@@ -327,7 +337,8 @@ python scripts/camera_opencv.py "$ROBOT_INTERFACE" --no-display \
 The SDK cannot select resolution or retrieve intrinsics. The
 [camera setup](camera_calibration_audit.md) explains the required upstream
 native calibration and local image conversion. There is no unverified
-fallback. Viser uses `--environment real`.
+fallback. Viser uses `--environment real --glim`, including when viewing manual
+sequence previews.
 `real + simulator` is rejected before creating robot channels. Real camera
 calibration, capture timing and physical motion still require hardware validation.
 
