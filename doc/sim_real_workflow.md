@@ -183,7 +183,21 @@ selection or fallback when GLIM fails.
 
 ## Real hardware
 
-Replace MuJoCo with the existing real Livox driver and camera stream. Use the same
+Start the external Livox driver without RViz in its own terminal:
+
+```bash
+source /opt/ros/humble/setup.bash
+source /path/to/ws_livox/install/setup.bash
+cd /path/to/unitree_rl_mjlab
+ros2 launch glim/launch/livox.launch.py
+```
+
+This uses the installed driver's MID360_config.json. Configure its host/sensor
+IPs as described in [GLIM setup](../glim/README.md); an optional
+`user_config_path:=/path/to/MID360_config.json` selects another driver config.
+Do not also launch `rviz_MID360_launch.py` or a second Livox driver.
+
+Replace MuJoCo with that driver and the real camera stream. Use the same
 external GLIM command/configuration. Complete the robot's established low-level
 control preparation before starting g1_ctrl; the simulator's keyboard hang toggle
 does not apply. Mode buttons use the existing Unitree remote. This workflow does

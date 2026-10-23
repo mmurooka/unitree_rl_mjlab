@@ -74,13 +74,14 @@ component startup order and Xbox controls.
 
 ## Livox output contract
 
-Use the tutorial's external Livox driver and its `rviz_MID360_launch.py`
+Use the tutorial's external Livox driver with this repository's RViz-free launch
 (`xfer_format=0`, PointCloud2). Source your own Livox workspace first:
 
 ```bash
 source /opt/ros/humble/setup.bash
 source /path/to/ws_livox/install/setup.bash
-ros2 launch livox_ros_driver2 rviz_MID360_launch.py
+cd /path/to/unitree_rl_mjlab
+ros2 launch glim/launch/livox.launch.py
 ```
 
 Set the LiDAR and host addresses in that driver's `MID360_config.json` for
@@ -101,3 +102,10 @@ PointCloud2 setting for seconds vs nanoseconds or absolute vs relative time.
 
 For repeatable sensor-only checks and the remaining mount discrepancy, see
 [sensor validation](../doc/real_sensor_validation.md).
+
+The launch above starts only the external driver, with the same PointCloud2
+format, 10 Hz rate and frame as `rviz_MID360_launch.py`. It does not start RViz
+or GLIM. It automatically uses the installed driver's `config/MID360_config.json`;
+override with `user_config_path:=/path/to/MID360_config.json` when needed.
+The external driver's files are not modified. `msg_MID360_launch.py` is not an
+equivalent substitute because its default is Livox CustomMsg.
