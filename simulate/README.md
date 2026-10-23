@@ -96,7 +96,11 @@ The MID-360 simulation publishes:
 - linear acceleration: g, matching the Livox driver; external GLIM converts to m/s²
 
 Rays are acquired incrementally, so a cloud contains motion distortion. The
-per-point `timestamp` is in seconds relative to the cloud header timestamp.
+per-point `timestamp` is a float64 absolute timestamp in nanoseconds, matching
+the Livox driver. In simulation, absolute time starts at the simulation epoch.
+The ROS header still uses seconds plus nanoseconds. Rebuild the simulator after
+updating its sensor publisher; an older binary emitting relative seconds is
+incompatible with the shared GLIM configuration.
 Intensity is synthetic and `tag` is zero.
 
 The D435 simulation publishes RealSense-compatible interfaces under

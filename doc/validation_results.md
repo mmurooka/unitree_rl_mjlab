@@ -6,7 +6,39 @@ in [command continuity](mimic_start_continuity.md) and
 [sensor frames](sensor_frames.md); reusable evaluation commands are in
 [simulation checks](sim_check.md).
 
-## Image-based box transport
+## Current workflow recheck (2026-10-23)
+
+After rebuilding the current simulator and controller, the documented startup
+order was checked with loopback-only DDS domain 83 / ROS domain 84, isolated
+binary/configuration copies, and FIFO Xbox input via `sim_check`. FixStand and
+Velocity preceded hang release. GLIM was launched externally from this checkout's
+`glim/launch/glim.launch.py` after standing stabilized. This tests the equivalent
+components and ordering, not physical Xbox hardware.
+
+- GLIM: all four Navigation goals and lift/put completed. Offline placement
+  evaluation passed over five seconds; final box center in the destination-table
+  frame was (0.0603, -0.0263, 0.6525) m.
+- GLIM-free: all four Navigation goals and lift completed. Put was rejected at
+  SDK joint 6 (right hip pitch): 20.89 degrees between the preceding Navigation
+  position command and the candidate Mimic position command, above the unchanged
+  20-degree limit. This run did **not** complete transport.
+- The reported `points=0` GLIM warning was not reproduced. A 12-second audit
+  received 120 clouds and 2502 IMU messages with no timestamp rewinds. One cloud's
+  first point timestamp was 30204009999.99 ns, corresponding to 30.20401 s,
+  rather than zero. No GLIM timing warnings appeared during the transport run.
+
+A separate GLIM-free repeat with admission tracing enabled stopped because the
+destination marker was not received within 10 seconds after the turn. It did
+not reach put, so it did not reproduce the 20.89-degree rejection. The recorded
+lift output matched offline ONNX replay exactly (maximum command change 10.88
+degrees). This is not evidence that put admission or repeated transport is fixed.
+
+Object truth was used only for offline placement evaluation. GLIM-free control
+additionally used explicit robot-localization truth. No real robot channels were
+used; all test-owned processes were stopped. These are bounded local runs, not
+proof that another PC's binary/configuration/stream combination is correct.
+
+## Earlier image-based box transport
 
 Both runs completed approach, lift, fixed backward/turn goals, destination-marker
 approach and put with the standard 20-degree command-continuity limit. No output

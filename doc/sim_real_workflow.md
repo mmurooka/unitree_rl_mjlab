@@ -36,6 +36,20 @@ Install the TaskPromptRL `.[online]` dependencies in its Python 3.10 venv using
 the [online setup](https://github.com/isri-aist/TaskPromptRL/blob/main/doc/online_motion_prompt_quickstart.md#1-prepare-the-environment).
 Each terminal below includes its own ROS, directory and Python environment setup.
 
+After pulling simulator changes, rebuild before starting these terminals:
+
+```bash
+source /opt/ros/humble/setup.bash
+cd /path/to/unitree_rl_mjlab
+cmake -S simulate -B simulate/build
+cmake --build simulate/build -j
+```
+
+Updating source/configuration alone does not update the simulator executable.
+The shared GLIM configuration expects absolute per-point timestamps in nanoseconds;
+older simulator binaries emitted relative seconds. Restart simulator, GLIM and
+deploy together after updating; do not continue a GLIM session across a sim reset.
+
 Deploy and the GLIM launch file default to this checkout's `glim/config`.
 The simulator uses fixed MJCF sensor geometry and never reads GLIM settings.
 See [GLIM setup](../glim/README.md) for installation and custom configuration.
