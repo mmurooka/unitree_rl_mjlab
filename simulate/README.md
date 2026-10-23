@@ -31,6 +31,8 @@ disable both sensor simulations:
 GLIM runs externally, with the same configuration as real hardware. See
 [the sim/real workflow](../doc/sim_real_workflow.md) for individual startup
 commands, including the required Velocity-before-hang-release ordering.
+Use the versioned [`glim/config`](../glim/config/) directory; its installation
+and path setup are described in the [GLIM guide](../glim/README.md).
 `--glim-config /absolute/path` reads the external sensor settings to match
 simulated IMU placement and topic/frame names. It never starts or modifies GLIM.
 Livox acceleration is published in g in both environments.

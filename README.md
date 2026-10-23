@@ -12,6 +12,7 @@ controller interfaces used by [TaskPromptRL](https://github.com/isri-aist/TaskPr
 | Install training dependencies and build G1 deploy | [Setup](doc/setup_en.md) · [中文](doc/setup_zh.md) |
 | Start sim/real components individually with a gamepad | [Sim/real workflow](doc/sim_real_workflow.md) |
 | Configure scenes and simulated sensors | [Simulator](simulate/README.md) |
+| Install GLIM/Livox and use the shared settings | [GLIM setup](glim/README.md) |
 | Recognize markers and calibrate the real camera | [ArUco](aruco/README.md) · [Camera calibration](doc/camera_calibration_audit.md) |
 | Understand root frames and timestamps | [Sensor frames](doc/sensor_frames.md) |
 | Send goals and interpret arrival | [Navigation protocol](doc/navigation_goals.md) |

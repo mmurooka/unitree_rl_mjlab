@@ -67,6 +67,10 @@ export CMAKE_PREFIX_PATH=/usr/local:${CMAKE_PREFIX_PATH}
 export LD_LIBRARY_PATH=/usr/local/lib:${LD_LIBRARY_PATH}
 ```
 
-GLIM and the real Livox driver are external installations. The repository reads
-an explicitly supplied GLIM configuration; it does not install or start GLIM.
+GLIM and the real Livox driver are external installations. Their setup follows
+the [GLIM/Livox guide](../glim/README.md), including the required
+`PYTHONNOUSERSITE=1` build invocation and `DISTRO_ROS` CMake option.
+The shared sim/real configuration is versioned under `glim/config`; pass its
+absolute path explicitly to GLIM, simulator and deploy. This repository does not
+install or start GLIM automatically.
 Continue with the [individual startup workflow](sim_real_workflow.md).

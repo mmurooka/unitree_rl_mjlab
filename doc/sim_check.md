@@ -8,9 +8,16 @@ It does not modify the normal manual-start configuration. The Python scripts and
 policy assets remain linked by path to this checkout: preserve its commit and
 avoid changing them during a run.
 
+For GLIM mode, run from this repository root and select the same versioned
+configuration as the [normal startup workflow](../glim/README.md):
+
+```bash
+export G1_GLIM_CONFIG="$(realpath glim/config)"
+```
+
 ```bash
 python3 scripts/sim_check.py prepare /path/to/new-run --localization simulator
-# Or: --localization glim --glim-config /path/to/external/glim/config
+# Or: --localization glim --glim-config "$G1_GLIM_CONFIG"
 ```
 
 In separate terminals, source the ROS environment and run:
@@ -42,7 +49,7 @@ For GLIM checks, start external GLIM normally after the stable standing stage:
 
 ```bash
 ROS_DOMAIN_ID=84 ROS_LOCALHOST_ONLY=1 ros2 run glim_ros glim_rosnode \
-  --ros-args -p config_path:=/path/to/external/glim/config
+  --ros-args -p config_path:="$G1_GLIM_CONFIG"
 ```
 
 The manifest contains the exact ROS domain (default 84), DDS domain (default 83)

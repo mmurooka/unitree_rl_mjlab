@@ -23,3 +23,6 @@ GRTAGS
 GTAGS
 
 .venv-sensors/
+
+# Editor backups beside the shared GLIM settings.
+glim/config/*~

@@ -32,21 +32,23 @@ run a plan adapted to the real layout.
 ## Common terminal setup
 
 Examples use ROS Humble, sibling repositories under `~/src` and the shared Python
-3.10 environment. Run this setup in each terminal, adjusting the external GLIM
-path to the **same complete configuration directory used on real hardware**:
+3.10 environment. Run this setup in each terminal. Replace the repository path
+with its actual location; sim and real use the same versioned `glim/config`:
 
 ```bash
 source /opt/ros/humble/setup.bash
 source ~/src/TaskPromptRL/.venv-online-ros/bin/activate
 export ROS_DOMAIN_ID=0
-export G1_GLIM_CONFIG="$HOME/src/glim/config"
-cd ~/src/unitree_rl_mjlab
+cd /path/to/unitree_rl_mjlab
+export G1_GLIM_CONFIG="$(realpath glim/config)"
 ```
 
 The simulator/controller read that directory to match sensor frames and extrinsics;
 they do not write it. Unitree DDS `--domain-id` defaults to 0; keep it equal
 on simulator, controller and recognition. ROS_DOMAIN_ID is independent and must
 match all ROS sensor consumers and GLIM. Run only one controller for these endpoints.
+For GLIM/Livox installation and the driver build command, see the
+[GLIM setup guide](../glim/README.md).
 
 ## Sim2sim with GLIM
 
