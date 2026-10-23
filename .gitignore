@@ -4,6 +4,8 @@ outputs
 logs
 wandb
 MUJOCO_LOG.TXT
+# Local ImGui window layout.
+imgui.ini
 deploy/robots/go2/build
 deploy/robots/g1/build
 deploy/robots/h1_2/build
