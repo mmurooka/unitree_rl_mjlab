@@ -189,9 +189,9 @@ is active. The commands below enable GLIM point-cloud display. For GLIM-free
 simulation, omit `--glim`. On real hardware, change the viewer's
 `--environment sim` to `--environment real` and keep `--glim`.
 
-Use the viewer command below **instead of** the optional viewer in step 5. Both
-terminals must use the same new run directory; the viewer can start before that
-directory exists.
+Use the viewer command below **instead of** the optional viewer in step 5.
+Start g1_ctrl first. Use the same log root in both terminals; Viser creates the
+timestamped run directory and enables recording automatically.
 
 **Terminal A — start the passive viewer:**
 
@@ -199,12 +199,11 @@ directory exists.
 source /opt/ros/humble/setup.bash
 cd /path/to/TaskPromptRL
 source venv-tprl/bin/activate
-python scripts/view_robot.py --live --environment sim --glim \
-  --sequence-run /path/to/new-sequence-run
+python scripts/view_robot.py --live --environment sim --glim --log-root /path/to/logs
 ```
 
-Open `http://127.0.0.1:8080`. `--sequence-run` automatically enables read-only
-viewing; the browser has no execution button for the sequence.
+Open `http://127.0.0.1:8080`. `--log-root` enables read-only sequence viewing
+and recording; the browser has no execution button for the sequence.
 
 **Terminal B — prepare, review and execute each step:**
 
@@ -212,11 +211,12 @@ viewing; the browser has no execution button for the sequence.
 source /opt/ros/humble/setup.bash
 cd /path/to/TaskPromptRL
 source venv-tprl/bin/activate
-python scripts/run_transport.py --execute --manual \
-  --run-dir /path/to/new-sequence-run
+python scripts/run_transport.py --execute --manual --log-root /path/to/logs
 ```
 
-The run directory must be new/empty. Before each terminal prompt, Viser shows:
+Each viewer start creates a new timestamped session; restart Viser for a new
+run. `sequence/` holds task logs/references and `viser/` holds viewer recordings.
+Before each terminal prompt, Viser shows:
 
 | Step | Preview before Enter |
 |---|---|
@@ -234,6 +234,8 @@ reference, not guaranteed physical tracking or collision clearance.
 Ctrl+C in Terminal B stops further sequence commands; it does not stop the robot's
 active policy. Completion or cancellation clears the pending preview. Run logs,
 reference files and the reviewed plan are saved under the run directory.
+Replay the most recent viewer recording with
+`python scripts/view_robot.py --replay /path/to/logs/latest/viser`.
 
 ## GLIM-free sim2sim
 
@@ -260,7 +262,7 @@ For example, passive viewing without GLIM is:
 python scripts/view_robot.py --live --environment sim --read-only
 ```
 
-Keep `--sequence-run /path/to/new-sequence-run` when using manual previews.
+Keep `--log-root /path/to/logs` when using manual previews and recording.
 All other steps are identical. This source explicitly uses MuJoCo robot truth
 from `rt/sportmodestate` for localization/displacement and goal time compensation.
 Recognition, camera transforms and marker goals do not use object truth.
