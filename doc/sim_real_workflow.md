@@ -269,6 +269,9 @@ selection or fallback when GLIM fails.
 
 ## Real hardware
 
+For the checked PC/interface and venv setup, use the concise
+[copy-and-paste startup with timestamped Viser recording](real_hardware_quickstart.md).
+
 Start the external Livox driver without RViz in its own terminal:
 
 ```bash
