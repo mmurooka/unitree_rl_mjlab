@@ -24,7 +24,7 @@ For a robot, start the camera bridge separately, then the same recognition node:
 
 ```bash
 python scripts/camera_opencv.py <robot-interface> --no-display \
-  --calibration /path/to/actual_640x480_calibration.yaml
+  --calibration /path/to/native_stream_calibration.yaml
 python aruco/frame_pose_publisher.py --environment real --network <robot-interface>
 ```
 
@@ -64,8 +64,17 @@ outer edge (12 cm in the supplied configuration), excluding the quiet zone.
 Tests: `python -m unittest discover -s aruco -p test_frame_pose_publisher.py`
 and `python -m unittest discover -s tests -p test_robot_frames.py`.
 
-The real bridge requires a 640×480 stream and an explicitly supplied actual
-calibration. It has no default intrinsic values and applies no resize/scaling.
+The real bridge publishes full-frame 960×540 images and requires an explicitly supplied native
+calibration. It has no default intrinsic values. The complete native 16:9 image and its intrinsics
+are resized together to 960×540 without cropping.
 `--save-on-exit frame.png` saves the valid image and calibration/stream metadata.
 See [real camera setup](../doc/camera_calibration_audit.md) for acquisition limits
 and calibration requirements. Static TF is off by default.
+
+Recognition also publishes annotated JPEG frames on
+`<frame_pose_list.topic>/image/compressed` (default
+`/frame_pose_list/image/compressed`) when subscribed. The original image header
+is preserved. This works with the OpenCV window disabled and with no detected
+markers. Detection outlines/IDs remain available when measured-state FK is
+unavailable; named object poses still require valid FK. Viser uses this same
+image for its live 2D panel, without running another detector.

@@ -19,7 +19,7 @@ import yaml
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
-from sensor_msgs.msg import CameraInfo, Image
+from sensor_msgs.msg import CameraInfo, CompressedImage, Image
 from std_msgs.msg import String
 
 
@@ -336,6 +336,9 @@ class ArucoFramePosePublisher(Node):
         self.display_initialized = False
 
         self.publisher = self.create_publisher(String, config.topic, 1)
+        self.annotated_publisher = self.create_publisher(
+            CompressedImage, config.topic + "/image/compressed", qos_profile_sensor_data
+        )
         self.info_subscription = self.create_subscription(
             CameraInfo,
             config.camera_info_topic,
@@ -357,7 +360,17 @@ class ArucoFramePosePublisher(Node):
             f"display={'on' if config.display else 'off'}"
         )
 
-    def show_camera(self, image: np.ndarray) -> None:
+    def show_camera(self, image: np.ndarray, header) -> None:
+        # Publish the exact detection frame, including empty detections and
+        # unavailable FK. Visualization must not depend on localization.
+        if self.annotated_publisher.get_subscription_count():
+            ok, encoded = cv2.imencode(".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, 85])
+            if ok:
+                output = CompressedImage()
+                output.header = header
+                output.format = "bgr8; jpeg compressed bgr8"
+                output.data = encoded.tobytes()
+                self.annotated_publisher.publish(output)
         if not self.display_enabled:
             return
         try:
@@ -428,21 +441,21 @@ class ArucoFramePosePublisher(Node):
 
         if self.camera_matrix is None or self.distortion is None:
             self.warn_throttled("no_info", "waiting for CameraInfo")
-            self.show_camera(display)
+            self.show_camera(display, message.header)
             return
         camera_frame = self.config.camera_frame or message.header.frame_id
         if not camera_frame:
             self.warn_throttled("camera_frame", "Image header has no camera frame")
-            self.show_camera(display)
+            self.show_camera(display, message.header)
             return
         if self.info_shape != (int(message.width), int(message.height)) or self.info_frame != message.header.frame_id:
             self.warn_throttled("camera_info_match", "Image and CameraInfo resolution/frame disagree")
-            self.show_camera(display)
+            self.show_camera(display, message.header)
             return
         stamp = float(message.header.stamp.sec) + float(message.header.stamp.nanosec) * 1e-9
         reference_to_camera = self.reference_to_camera(camera_frame, stamp)
         if reference_to_camera is None:
-            self.show_camera(display)
+            self.show_camera(display, message.header)
             return
 
         detected: list[dict[str, Any]] = []
@@ -508,7 +521,7 @@ class ArucoFramePosePublisher(Node):
             separators=(",", ":"),
         )
         self.publisher.publish(output)
-        self.show_camera(display)
+        self.show_camera(display, message.header)
 
 
 def parse_args(arguments: list[str] | None = None) -> argparse.Namespace:

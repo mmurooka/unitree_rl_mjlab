@@ -46,5 +46,13 @@ class MeasuredRobotState:
             raise ValueError(self.last_error)
         return self.history.at(stamp)
 
+    def latest(self):
+        """Latest validated sample, with the same freshness guard as at()."""
+        with self.history.lock:
+            if not self.history.samples:
+                raise ValueError('waiting for measured robot state')
+            stamp = self.history.samples[-1].stamp
+        return self.at(stamp)
+
     def close(self):
         self.subscriber.Close()
