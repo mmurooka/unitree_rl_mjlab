@@ -330,6 +330,7 @@ class ArucoFramePosePublisher(Node):
         self.info_frame = None
         self.dictionary = cv2.aruco.getPredefinedDictionary(config.dictionary_id)
         self.marker_detector = CompatibleArucoDetector(self.dictionary)
+        self.image_sequence = 0
         self.camera_matrix: np.ndarray | None = None
         self.distortion: np.ndarray | None = None
         self.last_warning: dict[str, float] = {}
@@ -430,6 +431,7 @@ class ArucoFramePosePublisher(Node):
             return None
 
     def on_image(self, message: Image) -> None:
+        self.image_sequence += 1
         try:
             gray, display = image_arrays(message)
         except ValueError as error:
@@ -518,6 +520,7 @@ class ArucoFramePosePublisher(Node):
                 "clock_domain": "simulation" if self.environment == "sim" else "ros",
                 "state_time_source": "sdk_tick" if self.environment == "sim" else "dds_receipt_ros_time",
                 "frame_pose_list": detected,
+                "image_sequence": self.image_sequence,
             },
             separators=(",", ":"),
         )
