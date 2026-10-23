@@ -9,6 +9,18 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class Mid360ModelTest(unittest.TestCase):
+    def test_nominal_raw_axes_are_forward_right_down(self):
+        model = mujoco.MjModel.from_xml_path(str(
+            ROOT / "src/assets/robots/unitree_g1/xmls/scene_g1.xml"))
+        data = mujoco.MjData(model)
+        mujoco.mj_forward(model, data)
+        torso = model.body("torso_link").id
+        lidar = model.site("livox_frame").id
+        rotation = data.xmat[torso].reshape(3, 3).T @ data.site_xmat[lidar].reshape(3, 3)
+        self.assertGreater(rotation[0, 0], .99)
+        self.assertLess(rotation[1, 1], -.99)
+        self.assertLess(rotation[2, 2], -.99)
+
     def test_fixed_extrinsic_and_acceleration_across_robot_poses(self):
         model = mujoco.MjModel.from_xml_path(str(
             ROOT / "src/assets/robots/unitree_g1/xmls/scene_g1.xml"))
