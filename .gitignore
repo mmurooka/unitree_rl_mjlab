@@ -8,6 +8,8 @@ MUJOCO_LOG.TXT
 imgui.ini
 deploy/robots/go2/build
 deploy/robots/g1/build
+# Generated controller diagnostics.
+deploy/robots/g1/log/
 deploy/robots/h1_2/build
 deploy/robots/g1_23dof/build
 deploy/robots/r1/build
