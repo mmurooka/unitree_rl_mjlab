@@ -139,7 +139,9 @@ python scripts/view_robot.py --live --environment sim --read-only --glim
 Open `http://127.0.0.1:8080`. For browser preview followed by its execution button,
 omit `--read-only` and use the browser as the command owner. See
 [Viser](https://github.com/isri-aist/TaskPromptRL/blob/main/doc/viser_viewer.md)
-for recording/replay. `--glim` enables GLIM point-cloud display; visibility can
+for recording/replay and headless MP4 export. Add `--record /path/to/new-record`
+to record posture, annotated images and received GLIM clouds (media are downsampled
+for storage). `--glim` enables GLIM point-cloud display; visibility can
 also be toggled in the browser. The viewer does not start sensors, GLIM or g1_ctrl.
 
 ### 6. Individual commands or transport sequence

@@ -81,7 +81,7 @@ in the sequence terminal. Ctrl+C stops further requests, not the active policy.
 ## Logs and replay
 
 - `~/log/YYYYMMDD_HHMMSS_microseconds/sequence/YYYYMMDD_HHMMSS_microseconds/`: task events, reviewed plan and reference files.
-- `~/log/YYYYMMDD_HHMMSS_microseconds/viser/`: recorded viewer state for replay.
+- `~/log/YYYYMMDD_HHMMSS_microseconds/viser/`: recorded posture/reference, sampled camera and received GLIM points for replay.
 - `~/log/latest`: the latest session, managed automatically. Step 6 can be restarted without restarting Viser; each invocation saves a new sequence log.
 
 After closing live Viser, replay the latest recording from TaskPromptRL:
